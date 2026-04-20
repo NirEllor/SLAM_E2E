@@ -1,9 +1,9 @@
 import cv2
 import matplotlib.pyplot as plt
 from pathlib import Path
+import random
 
-DATA_PATH = Path(r'C:\Users\Nir\PycharmProjects\VAN_ex\dataset\dataset_2026\sequences\00')
-
+DATA_PATH = Path(r'C:\Hebrew University\computer scince\second year second sem\slam\VAN_ex\dataset\dataset_2026\sequences\00')
 
 def read_images(idx):
     img_name = '{:06d}.png'.format(idx)
@@ -48,6 +48,92 @@ def print_descriptor_info(des1, des2):
     else:
         print("Warning: Could not extract enough descriptors.")
 
+def match_descriptors(des1, des2):
+    """
+    Matches each descriptor in the left image to its closest descriptor in the right image using BFMatcher.
+    """
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False) # crossCheck=False => as written in the instruction: for each descriptor in the left image, the closest feature in the right image.
+    matches = bf.match(des1, des2)
+    # matches = sorted(matches, key=lambda m: m.distance)
+    return matches
+
+def draw_random_matches(img1, kp1, img2, kp2, matches, num_matches=20):
+    """
+    Draws random matches between the left and right images.
+    """
+    if len(matches) < num_matches:
+        num_matches = len(matches)
+
+    sampled_matches = random.sample(matches, num_matches)
+
+    matched_img = cv2.drawMatches(
+        img1, kp1,
+        img2, kp2,
+        sampled_matches, None,
+        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+    )
+
+    matched_img_rgb = cv2.cvtColor(matched_img, cv2.COLOR_BGR2RGB)
+
+    plt.figure(figsize=(16, 8))
+    plt.title(f"{num_matches} Random Matches")
+    plt.imshow(matched_img_rgb)
+    plt.axis('off')
+    plt.tight_layout()
+
+
+def ratio_test_match(des1, des2, ratio=0.75):
+    """
+    Performs KNN matching and applies Lowe's ratio test.
+    """
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+
+    knn_matches = bf.knnMatch(des1, des2, k=2)
+
+    good_matches = []
+    rejected = []
+
+    for m, n in knn_matches:
+        if m.distance < ratio * n.distance:
+            good_matches.append(m)
+        else:
+            rejected.append(m)
+
+    return good_matches, rejected
+
+def draw_matches(img1, kp1, img2, kp2, matches, title="Matches", num=20):
+    if len(matches) > num:
+        matches = random.sample(matches, num)
+
+    img = cv2.drawMatches(
+        img1, kp1,
+        img2, kp2,
+        matches, None,
+        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+    )
+
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    plt.figure(figsize=(16, 8))
+    plt.title(title)
+    plt.imshow(img_rgb)
+    plt.axis('off')
+
+def show_multiple_rejected(img1, kp1, img2, kp2, rejected, num=3):
+    selected = random.sample(rejected, min(num, len(rejected)))
+
+    img1_copy = cv2.cvtColor(img1, cv2.COLOR_GRAY2RGB)
+    img2_copy = cv2.cvtColor(img2, cv2.COLOR_GRAY2RGB)
+
+    for match in selected:
+        pt1 = kp1[match.queryIdx].pt
+        pt2 = kp2[match.trainIdx].pt
+
+        cv2.circle(img1_copy, (int(pt1[0]), int(pt1[1])), 6, (255, 0, 0), -1)
+        cv2.circle(img2_copy, (int(pt2[0]), int(pt2[1])), 6, (255, 0, 0), -1)
+
+    visualize_side_by_side(img1_copy, img2_copy, title="Rejected Matches (Circled)")
+
 
 def main():
     # 1. Setup and Data Loading
@@ -78,7 +164,15 @@ def main():
     img2_kp_rgb = cv2.cvtColor(img2_kp, cv2.COLOR_BGR2RGB)
 
     visualize_side_by_side(img1_kp_rgb, img2_kp_rgb, title="ORB Keypoints")
-
+    matches = match_descriptors(des1, des2)
+    print(f"Total matches found: {len(matches)}")
+    draw_random_matches(img1, kp1, img2, kp2, matches, num_matches=20)
+    good_matches, rejected = ratio_test_match(des1, des2, ratio=0.6)
+    print(f"Good matches: {len(good_matches)}")
+    print(f"Rejected matches: {len(rejected)}")
+    draw_matches(img1, kp1, img2, kp2, good_matches, title="Good Matches (After Ratio Test)")
+    show_multiple_rejected(img1, kp1, img2, kp2, rejected)
+    # draw_matches(img1, kp1, img2, kp2, rejected, title="Rejected Matches (After Ratio Test)")
     plt.show()
 
 
