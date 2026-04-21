@@ -1,46 +1,89 @@
+import cv2
 import matplotlib.pyplot as plt
-from pathlib import Path
-import camera_lib as lib  # Import your library
-
-# Update this to your local path
-DATA_PATH = Path(r'C:\Hebrew University\computer scince\second year second sem\slam\VAN_ex\dataset\dataset_2026\sequences\00')
-
-def q1_1_to_1_2():
-    """Detect, extract, and print descriptor info[cite: 27, 39]."""
-    img1, img2 = lib.read_images(DATA_PATH, 0)
-    kp1, des1 = lib.detect_and_extract(img1)
-    kp2, des2 = lib.detect_and_extract(img2)
-
-    print(f"Task 1.2: Image 1 First Descriptor: {des1[0]}")
-    # Add your visualization code here
-    return img1, kp1, des1, img2, kp2, des2
+import random
+import van_utils_ex1 as lib
 
 
-def q1_3():
-    """Perform initial matching[cite: 40, 43]."""
-    img1, kp1, des1, img2, kp2, des2 = q1_1_to_1_2()
-    matches = lib.match_features(des1, des2)
-    print(f"Task 1.3: Total matches: {len(matches)}")
-    # Add code to draw 20 random matches here
+def q1():
+    """1.1: Detect & Present Keypoints."""
+    img1, img2 = lib.read_images(0)
+    kp1, des1 = lib.get_orb_features(img1)
+    kp2, des2 = lib.get_orb_features(img2)
+
+    # Assert check
+    assert len(kp1) >= 500 and len(kp2) >= 500, "Insufficient keypoints!"
+
+    # Present keypoints
+    img1_kp = cv2.drawKeypoints(img1, kp1, None, color=(0, 255, 0))
+    img2_kp = cv2.drawKeypoints(img2, kp2, None, color=(0, 255, 0))
+    lib.plot_stereo_side_by_side(img1_kp, img2_kp, "ORB Keypoints")
+
+    return img1, img2, kp1, kp2, des1, des2
 
 
-def q1_4():
-    """Apply ratio test and report results[cite: 46, 48]."""
-    img1, kp1, des1, img2, kp2, des2 = q1_1_to_1_2()
-    ratio = 0.6
-    good, rejected = lib.apply_ratio_test(des1, des2, ratio=ratio)
-    print(f"Task 1.4: Ratio used: {ratio}")
-    print(f"Matches discarded: {len(rejected)}")
-    # Add code to show a 'correct' match that failed
+def q2(des1, des2):
+    """1.2: Calculate & Print Descriptors."""
+    print("\n--- Task 1.2: Descriptor Info ---")
+    if des1 is not None and len(des1) >= 2:
+        print("Image 1 - Descriptor 0:", des1[0])
+        print("Image 1 - Descriptor 1:", des1[1])
+
+
+def q3(img1, img2, kp1, kp2, des1, des2):
+    """1.3: Match Descriptors."""
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    matches = bf.match(des1, des2)
+
+    lib.draw_matches_custom(img1, kp1, img2, kp2, matches, "1.3: 20 Random Raw Matches")
+    return matches
+
+
+def q4(img1, img2, kp1, kp2, des1, des2):
+    """1.4: Significance (Ratio) Test."""
+    ratio_value = 0.7
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+    knn_matches = bf.knnMatch(des1, des2, k=2)
+
+    good_matches = []
+    rejected_matches = []
+
+    for m, n in knn_matches:
+        if m.distance < ratio_value * n.distance:
+            good_matches.append(m)
+        else:
+            rejected_matches.append(m)
+
+    # 1. Output 20 resulting matches
+    lib.draw_matches_custom(img1, kp1, img2, kp2, good_matches, f"1.4: Good Matches (Ratio={ratio_value})")
+
+    # 2. Statistics
+    print("\n--- Task 1.4: Significance Test ---")
+    print(f"Ratio Value Used: {ratio_value}")
+    print(f"Matches Discarded: {len(rejected_matches)}")
+
+    # 3. Present a failed match (rejected but visually correct)
+    if rejected_matches:
+        # Pick one rejected match to display
+        fail = random.choice(rejected_matches)
+        img1_fail = cv2.cvtColor(img1, cv2.COLOR_GRAY2RGB)
+        img2_fail = cv2.cvtColor(img2, cv2.COLOR_GRAY2RGB)
+
+        pt1 = tuple(map(int, kp1[fail.queryIdx].pt))
+        pt2 = tuple(map(int, kp2[fail.trainIdx].pt))
+
+        cv2.circle(img1_fail, pt1, 10, (255, 0, 0), -1)
+        cv2.circle(img2_fail, pt2, 10, (255, 0, 0), -1)
+        lib.plot_stereo_side_by_side(img1_fail, img2_fail, "1.4: Failed Significance Test Match (Correct but rejected)")
 
 
 def main():
-    """Runs all needed functions."""
-    q1_1_to_1_2()
-    q1_3()
-    q1_4()
+    # Pass data between functions to maintain relation
+    img1, img2, kp1, kp2, des1, des2 = q1()
+    q2(des1, des2)
+    q3(img1, img2, kp1, kp2, des1, des2)
+    q4(img1, img2, kp1, kp2, des1, des2)
     plt.show()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
