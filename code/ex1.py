@@ -10,10 +10,8 @@ def q1():
     kp1, des1 = lib.get_orb_features(img1)
     kp2, des2 = lib.get_orb_features(img2)
 
-    # Assert check
     assert len(kp1) >= 500 and len(kp2) >= 500, "Insufficient keypoints!"
 
-    # Present keypoints
     img1_kp = cv2.drawKeypoints(img1, kp1, None, color=(0, 255, 0))
     img2_kp = cv2.drawKeypoints(img2, kp2, None, color=(0, 255, 0))
     lib.plot_stereo_side_by_side(img1_kp, img2_kp, "ORB Keypoints")
@@ -21,7 +19,7 @@ def q1():
     return img1, img2, kp1, kp2, des1, des2
 
 
-def q2(des1, des2):
+def q2(des1):
     """1.2: Calculate & Print Descriptors."""
     print("\n--- Task 1.2: Descriptor Info ---")
     if des1 is not None and len(des1) >= 2:
@@ -30,7 +28,6 @@ def q2(des1, des2):
 
 
 def q3(img1, img2, kp1, kp2, des1, des2):
-    """1.3: Match Descriptors."""
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     matches = bf.match(des1, des2)
 
@@ -73,13 +70,14 @@ def q4(img1, img2, kp1, kp2, des1, des2):
 
         cv2.circle(img1_fail, pt1, 10, (255, 0, 0), -1)
         cv2.circle(img2_fail, pt2, 10, (255, 0, 0), -1)
-        lib.plot_stereo_side_by_side(img1_fail, img2_fail, "1.4: Failed Significance Test Match (Correct but rejected)")
+        lib.plot_stereo_side_by_side(img1_fail, img2_fail, "1.4: Failed Significance Test Match (Correct but"
+                                                           "rejected)")
 
 
 def main():
     # Pass data between functions to maintain relation
     img1, img2, kp1, kp2, des1, des2 = q1()
-    q2(des1, des2)
+    q2(des1)
     q3(img1, img2, kp1, kp2, des1, des2)
     q4(img1, img2, kp1, kp2, des1, des2)
     plt.show()

@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import random
 
-# Dynamic path resolution to project root (VAN_ex)
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_PATH = PROJECT_ROOT / 'dataset' / 'dataset_2026' / 'sequences' / '00'
 
