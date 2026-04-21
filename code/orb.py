@@ -3,15 +3,26 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import random
 
-DATA_PATH = Path(r'C:\Hebrew University\computer scince\second year second sem\slam\VAN_ex\dataset\dataset_2026\sequences\00')
+# 1. Get the directory where orb.py is located (.../VAN_ex/code)
+script_dir = Path(__file__).parent
+
+# 2. Go one level up to the project root (.../VAN_ex) and then into the dataset
+DATA_PATH = script_dir.parent / 'dataset' / 'dataset_2026' / 'sequences' / '00'
+
 
 def read_images(idx):
-    img_name = '{:06d}.png'.format(idx)
-    path1 = str(DATA_PATH / 'image_0' / img_name)
-    path2 = str(DATA_PATH / 'image_1' / img_name)
+    # Format the image name with leading zeros
+    img_name = f'{idx:06d}.png'
 
-    img1 = cv2.imread(path1, 0)
-    img2 = cv2.imread(path2, 0)
+    # Pathlib handles slashes automatically for any OS
+    path1 = DATA_PATH / 'image_0' / img_name
+    path2 = DATA_PATH / 'image_1' / img_name
+
+    # cv2.imread usually accepts Path objects directly,
+    # but str() ensures compatibility with older versions
+    img1 = cv2.imread(str(path1), 0)
+    img2 = cv2.imread(str(path2), 0)
+
     return img1, img2
 
 
