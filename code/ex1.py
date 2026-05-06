@@ -4,7 +4,7 @@ import random
 import van_utils_ex1 as lib
 
 
-def q1():
+def q1_1():
     """1.1: Detect & Present Keypoints."""
     img1, img2 = lib.read_images(0)
     kp1, des1 = lib.get_orb_features(img1)
@@ -19,7 +19,7 @@ def q1():
     return img1, img2, kp1, kp2, des1, des2
 
 
-def q2(des1):
+def q1_2(des1):
     """1.2: Calculate & Print Descriptors."""
     print("\n--- Task 1.2: Descriptor Info ---")
     if des1 is not None and len(des1) >= 2:
@@ -27,7 +27,7 @@ def q2(des1):
         print("Image 1 - Descriptor 1:", des1[1])
 
 
-def q3(img1, img2, kp1, kp2, des1, des2):
+def q1_3(img1, img2, kp1, kp2, des1, des2):
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     matches = bf.match(des1, des2)
 
@@ -35,7 +35,7 @@ def q3(img1, img2, kp1, kp2, des1, des2):
     return matches
 
 
-def q4(img1, img2, kp1, kp2, des1, des2):
+def q1_4(img1, img2, kp1, kp2, des1, des2):
     """1.4: Significance (Ratio) Test."""
     ratio_value = 0.7
     bf = cv2.BFMatcher(cv2.NORM_HAMMING)
@@ -71,15 +71,49 @@ def q4(img1, img2, kp1, kp2, des1, des2):
         cv2.circle(img1_fail, pt1, 10, (255, 0, 0), -1)
         cv2.circle(img2_fail, pt2, 10, (255, 0, 0), -1)
         lib.plot_stereo_side_by_side(img1_fail, img2_fail, "1.4: Failed Significance Test Match (Correct but"
+             
                                                            "rejected)")
+def q2_1(kp1, kp2, matches):
+    """2.1: Analyze deviations from the rectified stereo pattern."""
+    print("\n--- Task 2.1: Rectified Stereo Pattern ---")
 
+    deviations = lib.compute_rectified_stereo_deviations(kp1, kp2, matches)
+
+    lib.plot_deviation_histogram(deviations)
+    lib.print_large_deviation_percentage(deviations, threshold=2)
+
+    return deviations
+
+
+def q2_2(img1, img2, kp1, kp2, matches, threshold=2):
+    """2.2: Reject matches using the rectified stereo pattern."""
+    print("\n--- Task 2.2: Reject Matches by Rectified Stereo Constraint ---")
+
+    inliers, outliers = lib.split_matches_by_rectified_pattern(
+        kp1, kp2, matches, threshold=threshold
+    )
+
+    print(f"Inliers: {len(inliers)}")
+    print(f"Outliers: {len(outliers)}")
+    print(f"Discarded matches: {len(outliers)}")
+
+    lib.draw_inliers_outliers(img1, kp1, img2, kp2, inliers, outliers)
+
+    return inliers, outliers
 
 def main():
-    # Pass data between functions to maintain relation
-    img1, img2, kp1, kp2, des1, des2 = q1()
-    q2(des1)
-    q3(img1, img2, kp1, kp2, des1, des2)
-    q4(img1, img2, kp1, kp2, des1, des2)
+    img1, img2, kp1, kp2, des1, des2 = q1_1()
+
+    q1_2(des1)
+
+    matches = q1_3(img1, img2, kp1, kp2, des1, des2)
+
+    q1_4(img1, img2, kp1, kp2, des1, des2)
+
+    q2_1(kp1, kp2, matches)
+
+    q2_2(img1, img2, kp1, kp2, matches, threshold=2)
+
     plt.show()
 
 
