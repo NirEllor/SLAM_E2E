@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 import random
 import van_utils_ex1 as lib
 
-
-def q1_1():
+#--------------------------------------ex1---------------------------------------------------------
+def q1_1(idx=0):
     """1.1: Detect & Present Keypoints."""
-    img1, img2 = lib.read_images(0)
+    img1, img2 = lib.read_images(idx)
     kp1, des1 = lib.get_orb_features(img1)
     kp2, des2 = lib.get_orb_features(img2)
 
@@ -70,9 +70,11 @@ def q1_4(img1, img2, kp1, kp2, des1, des2):
 
         cv2.circle(img1_fail, pt1, 10, (255, 0, 0), -1)
         cv2.circle(img2_fail, pt2, 10, (255, 0, 0), -1)
-        lib.plot_stereo_side_by_side(img1_fail, img2_fail, "1.4: Failed Significance Test Match (Correct but"
-             
-                                                           "rejected)")
+        lib.plot_stereo_side_by_side(img1_fail, img2_fail, "1.4: Failed Significance Test Match (Rejected Match Example"
+                                                           ")")
+
+
+#--------------------------------------ex2---------------------------------------------------------
 def q2_1(kp1, kp2, matches):
     """2.1: Analyze deviations from the rectified stereo pattern."""
     print("\n--- Task 2.1: Rectified Stereo Pattern ---")
@@ -101,8 +103,30 @@ def q2_2(img1, img2, kp1, kp2, matches, threshold=2):
 
     return inliers, outliers
 
-def main():
-    img1, img2, kp1, kp2, des1, des2 = q1_1()
+def q2_3(kp1, kp2, matches):
+    """2.3: Linear least-squares triangulation and OpenCV comparison."""
+    print("\n--- Task 2.3: Triangulation ---")
+
+    k, m1, m2 = lib.read_cameras()
+
+    points1, points2 = lib.get_matched_points(kp1, kp2, matches)
+
+    points_3d_linear = lib.triangulate_points_linear(points1, points2, m1, m2)
+
+    lib.plot_3d_points(points_3d_linear, title="2.3: Linear Least-Squares Triangulation")
+
+    points_3d_cv = lib.triangulate_points_opencv(points1, points2, m1, m2)
+
+    lib.plot_3d_points(points_3d_cv, title="2.3: OpenCV triangulatePoints")
+
+    median_dist = lib.median_3d_distance(points_3d_linear, points_3d_cv)
+
+    print(f"Median distance between linear and OpenCV 3D points: {median_dist}")
+
+    return points_3d_linear, points_3d_cv
+
+def run_single_pair(idx=0):
+    img1, img2, kp1, kp2, des1, des2 = q1_1(idx)
 
     q1_2(des1)
 
@@ -112,7 +136,17 @@ def main():
 
     q2_1(kp1, kp2, matches)
 
-    q2_2(img1, img2, kp1, kp2, matches, threshold=2)
+    inliers, outliers = q2_2(img1, img2, kp1, kp2, matches, threshold=2)
+
+    q2_3(kp1, kp2, inliers)
+
+
+def main():
+    frame_indices = [0, 1, 2, 3, 4]
+
+    for idx in frame_indices:
+        print(f"\n========== Frame {idx} ==========")
+        run_single_pair(idx)
 
     plt.show()
 
