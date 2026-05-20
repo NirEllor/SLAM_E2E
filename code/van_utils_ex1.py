@@ -195,3 +195,48 @@ def plot_3d_points(points_3d, title="3D Point Cloud"):
 def median_3d_distance(points_a, points_b):
     distances = np.linalg.norm(points_a - points_b, axis=1)
     return np.median(distances)
+
+
+
+def plot_four_cameras(R, t, baseline=0.54):
+    """
+    Plots the relative 2D positions (X, Z) of the four cameras from a bird's-eye view.
+    """
+    import numpy as np
+    
+    # 1. Position of Frame 0 cameras (Time t0)
+    c_left_0 = np.array([0.0, 0.0])
+    c_right_0 = np.array([baseline, 0.0])
+    
+    # 2. Compute position of left_1 using the formula from Q3: C = -R^T * t
+    c_world_3d = -np.dot(R.T, t).flatten()
+    c_left_1 = np.array([c_world_3d[0], c_world_3d[2]]) # Extract X (width) and Z (depth)
+    
+    # 3. Compute position of right_1 (shifted by baseline along the camera's local X-axis)
+    right_shift_world = R.T[:, 0] * baseline
+    c_right_1 = c_left_1 + np.array([right_shift_world[0], right_shift_world[2]])
+
+    # 4. Plotting the cameras using matplotlib
+    plt.figure(figsize=(8, 6))
+    
+    # Plot Frame 0 cameras as triangles (pointing up)
+    plt.scatter(c_left_0[0], c_left_0[1], color='blue', marker='^', s=150, label='Left Camera (t0)')
+    plt.scatter(c_right_0[0], c_right_0[1], color='cyan', marker='^', s=150, label='Right Camera (t0)')
+    
+    # Plot Frame 1 cameras as squares
+    plt.scatter(c_left_1[0], c_left_1[1], color='red', marker='s', s=120, label='Left Camera (t1)')
+    plt.scatter(c_right_1[0], c_right_1[1], color='orange', marker='s', s=120, label='Right Camera (t1)')
+    
+    # Draw dashed lines connecting the stereo baseline pairs
+    plt.plot([c_left_0[0], c_right_0[0]], [c_left_0[1], c_right_0[1]], 'b--', alpha=0.5)
+    plt.plot([c_left_1[0], c_right_1[0]], [c_left_1[1], c_right_1[1]], 'r--', alpha=0.5)
+
+    # Graph formatting
+    plt.title("Relative Positions of the Four Cameras (Bird's-Eye View)")
+    plt.xlabel("X (Width / Lateral movement in meters)")
+    plt.ylabel("Z (Depth / Forward movement in meters)")
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.legend()
+    plt.axis('equal') # Maintain aspect ratio so distance scales are identical on both axes
+    
+    print("\n[Plot] Generated camera relative position chart successfully.")

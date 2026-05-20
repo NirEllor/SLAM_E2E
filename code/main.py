@@ -201,7 +201,7 @@ def q3_1(idx=0):
     print(f"\n--- Task 3.1: Generating Data for Next Stereo Pair (Frame {idx + 1}) ---")
     
     # 1. Run the updated single pair pipeline for the next frame without intermediate plots
-    frame1_data = run_single_pair2(idx=idx + 1, display=False)
+    frame1_data = run_single_pair(idx=idx + 1, display=False)
     
     # 2. Plot only the 3D point cloud required for task 3.1
     lib.plot_3d_points(frame1_data['points_3d'], title=f"3.1: Point Cloud for Frame {idx + 1}")
@@ -313,7 +313,7 @@ def q3_3(frame0_data, frame1_data, good_temporal_matches):
         imagePoints=image_points,
         cameraMatrix=k,
         distCoeffs=None,
-        flags=cv2.SOLVEPNP_ITERATIVE
+        flags=cv2.SOLVEPNP_EPNP 
     )
     
     if not success:
@@ -334,12 +334,12 @@ def q3_3(frame0_data, frame1_data, good_temporal_matches):
 def q3(idx=0):
     """
     Main manager for Exercise 3.
-    Coordinates tasks 3.1, 3.2, and 3.3.
+    Coordinates tasks 3.1, 3.2, 3.3 and the camera plot visualization.
     """
     print(f"\n==================== Starting Ex 3 Pipeline (Frame {idx} -> {idx+1}) ====================")
     
     # 1. Get all data for the current frame (time t_0) with visualizations
-    frame0_data = run_single_pair2(idx=idx, display=True)
+    frame0_data = run_single_pair(idx=idx, display=True)
     
     # 2. Get all data for the next frame (time t_1) using task 3.1
     frame1_data = q3_1(idx=idx)
@@ -349,6 +349,10 @@ def q3(idx=0):
     
     # 4. Task 3.3: Estimate camera matrix [R|t] using 4 points and PnP
     R, t = q3_3(frame0_data, frame1_data, good_temporal_matches)
+    
+    # 5. Plot the relative camera positions from above
+    # We automatically calculate baseline from m2 if needed, here passed 0.54 as standard
+    lib.plot_four_cameras(R, t, baseline=0.54)
     
     return frame0_data, frame1_data, good_temporal_matches, R, t
 
