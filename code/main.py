@@ -2,6 +2,8 @@ import cv2
 import matplotlib.pyplot as plt
 import random
 import van_utils_ex1 as lib
+import numpy as np
+
 
 #--------------------------------------ex1---------------------------------------------------------
 def q1_1(idx=0, plot = True):
@@ -288,7 +290,6 @@ def q3_3(frame0_data, frame1_data, good_temporal_matches):
             pts_2d_list.append(p2d)
             
     # Convert lists to NumPy arrays as required by OpenCV
-    import numpy as np
     pts_3d_all = np.array(pts_3d_list, dtype=np.float32)
     pts_2d_all = np.array(pts_2d_list, dtype=np.float32)
     
@@ -331,6 +332,205 @@ def q3_3(frame0_data, frame1_data, good_temporal_matches):
     
     return R, t
 
+def q3_4(frame0_data, frame1_data, good_temporal_matches, R, t, threshold=2):
+    """
+    3.4: Find supporters of the transformation T using reprojection error
+    in all four images: left0, right0, left1, right1.
+    """
+    print("\n--- Task 3.4: Supporters by 4-view reprojection consistency ---")
+
+    k, m_left0, m_right0 = lib.read_cameras()
+
+    # Stereo translation from left camera to right camera.
+    # m_right0 = K [I | t_stereo]
+    t_stereo = np.linalg.inv(k) @ m_right0[:, 3]
+
+    # Projection matrices for frame 1
+    P_left1 = k @ np.hstack([R, t.reshape(3, 1)])
+    P_right1 = k @ np.hstack([R, (t.reshape(3) + t_stereo).reshape(3, 1)])
+
+    # Map left0 keypoint index -> (3D index, stereo match)
+    left0_to_3d = {
+        m.queryIdx: (idx, m)
+        for idx, m in enumerate(frame0_data['stereo_inliers'])
+    }
+
+    # Map left1 keypoint index -> stereo match in frame1
+    left1_to_stereo = {
+        m.queryIdx: m
+        for m in frame1_data['stereo_inliers']
+    }
+
+    supporters = []
+    non_supporters = []
+
+    for temporal_match in good_temporal_matches:
+        left0_idx = temporal_match.queryIdx
+        left1_idx = temporal_match.trainIdx
+
+        # Need the point to exist in all four images
+        if left0_idx not in left0_to_3d:
+            continue
+        if left1_idx not in left1_to_stereo:
+            continue
+
+        point_3d_idx, stereo_match0 = left0_to_3d[left0_idx]
+        stereo_match1 = left1_to_stereo[left1_idx]
+
+        X = frame0_data['points_3d'][point_3d_idx]
+
+        # Observed pixel locations
+        obs_left0 = np.array(frame0_data['kp_left'][stereo_match0.queryIdx].pt)
+        obs_right0 = np.array(frame0_data['kp_right'][stereo_match0.trainIdx].pt)
+        obs_left1 = np.array(frame1_data['kp_left'][temporal_match.trainIdx].pt)
+        obs_right1 = np.array(frame1_data['kp_right'][stereo_match1.trainIdx].pt)
+
+        # Reproject the same 3D point to all four cameras
+        proj_left0 = lib.project_point(m_left0, X)
+        proj_right0 = lib.project_point(m_right0, X)
+        proj_left1 = lib.project_point(P_left1, X)
+        proj_right1 = lib.project_point(P_right1, X)
+
+        errors = [
+            np.linalg.norm(proj_left0 - obs_left0),
+            np.linalg.norm(proj_right0 - obs_right0),
+            np.linalg.norm(proj_left1 - obs_left1),
+            np.linalg.norm(proj_right1 - obs_right1),
+        ]
+
+        if all(e < threshold for e in errors):
+            supporters.append(temporal_match)
+        else:
+            non_supporters.append(temporal_match)
+
+    print(f"Supporters: {len(supporters)}")
+    print(f"Non-supporters: {len(non_supporters)}")
+
+    lib.draw_temporal_supporters(
+        frame0_data['img_left'],
+        frame0_data['kp_left'],
+        frame1_data['img_left'],
+        frame1_data['kp_left'],
+        supporters,
+        non_supporters
+    )
+
+    return supporters, non_supporters
+
+def q3_5(frame0_data,
+         frame1_data,
+         good_temporal_matches,
+         iterations=500,
+         threshold=2):
+    """
+    Custom RANSAC with PnP as inner model.
+    """
+
+    print("\n--- Task 3.5: Custom PnP-RANSAC ---")
+
+    k, _, _ = lib.read_cameras()
+
+    correspondences = lib.build_pnp_correspondences(
+        frame0_data,
+        frame1_data,
+        good_temporal_matches
+    )
+
+    print(f"Total correspondences: {len(correspondences)}")
+
+    best_inliers = []
+    best_R = None
+    best_t = None
+
+    for i in range(iterations):
+
+        # Random minimal sample of 4 correspondences
+        sample = random.sample(correspondences, 4)
+
+        object_points = np.array(
+            [c['X'] for c in sample],
+            dtype=np.float32
+        )
+
+        image_points = np.array(
+            [c['obs_left1'] for c in sample],
+            dtype=np.float32
+        )
+
+        success, rvec, tvec = cv2.solvePnP(
+            objectPoints=object_points,
+            imagePoints=image_points,
+            cameraMatrix=k,
+            distCoeffs=None,
+            flags=cv2.SOLVEPNP_EPNP
+        )
+
+        if not success:
+            continue
+
+        R, _ = cv2.Rodrigues(rvec)
+        t = tvec
+
+        inliers, outliers = lib.evaluate_supporters(
+            correspondences,
+            frame0_data,
+            frame1_data,
+            R,
+            t,
+            threshold
+        )
+
+        if len(inliers) > len(best_inliers):
+
+            best_inliers = inliers
+            best_R = R
+            best_t = t
+
+    print(f"Best inliers found: {len(best_inliers)}")
+
+    # =========================
+    # Refinement step
+    # =========================
+
+    object_points = np.array(
+        [c['X'] for c in best_inliers],
+        dtype=np.float32
+    )
+
+    image_points = np.array(
+        [c['obs_left1'] for c in best_inliers],
+        dtype=np.float32
+    )
+
+    success, rvec, tvec = cv2.solvePnP(
+        objectPoints=object_points,
+        imagePoints=image_points,
+        cameraMatrix=k,
+        distCoeffs=None,
+        flags=cv2.SOLVEPNP_EPNP
+    )
+
+    if not success:
+        raise RuntimeError("Refinement PnP failed.")
+
+    refined_R, _ = cv2.Rodrigues(rvec)
+    refined_t = tvec
+
+    final_inliers, final_outliers = lib.evaluate_supporters(
+        correspondences,
+        frame0_data,
+        frame1_data,
+        refined_R,
+        refined_t,
+        threshold
+    )
+
+    print(f"Final refined inliers: {len(final_inliers)}")
+    print(f"Final refined outliers: {len(final_outliers)}")
+
+    return refined_R, refined_t, final_inliers, final_outliers
+
+
 def q3(idx=0):
     """
     Main manager for Exercise 3.
@@ -353,8 +553,36 @@ def q3(idx=0):
     # 5. Plot the relative camera positions from above
     # We automatically calculate baseline from m2 if needed, here passed 0.54 as standard
     lib.plot_four_cameras(R, t, baseline=0.54)
-    
-    return frame0_data, frame1_data, good_temporal_matches, R, t
+
+    supporters, non_supporters = q3_4(
+        frame0_data,
+        frame1_data,
+        good_temporal_matches,
+        R,
+        t,
+        threshold=2
+    )
+    R_ransac, t_ransac, inliers, outliers = q3_5(
+        frame0_data,
+        frame1_data,
+        good_temporal_matches
+    )
+
+    lib.draw_ransac_results(
+        frame0_data,
+        frame1_data,
+        inliers,
+        outliers
+    )
+
+    lib.plot_transformed_clouds(
+        frame0_data,
+        frame1_data,
+        R_ransac,
+        t_ransac
+    )
+
+    return frame0_data, frame1_data, good_temporal_matches, R, t, supporters, non_supporters
 
 def main():
     frame_indices = [0, 1, 2, 3, 4]

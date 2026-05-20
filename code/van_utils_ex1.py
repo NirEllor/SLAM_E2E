@@ -196,7 +196,7 @@ def median_3d_distance(points_a, points_b):
     distances = np.linalg.norm(points_a - points_b, axis=1)
     return np.median(distances)
 
-
+#--------------------------------------ex3---------------------------------------------------------
 
 def plot_four_cameras(R, t, baseline=0.54):
     """
@@ -240,3 +240,278 @@ def plot_four_cameras(R, t, baseline=0.54):
     plt.axis('equal') # Maintain aspect ratio so distance scales are identical on both axes
     
     print("\n[Plot] Generated camera relative position chart successfully.")
+
+
+def project_point(P, X):
+    """
+    Project a 3D point X using camera matrix P.
+    X is shape (3,), P is shape (3,4).
+    Returns pixel (u, v).
+    """
+    X_h = np.append(X, 1.0)
+    x_h = P @ X_h
+
+    if abs(x_h[2]) < 1e-12:
+        return np.array([np.nan, np.nan])
+
+    return x_h[:2] / x_h[2]
+
+def draw_temporal_supporters(img_left0, kp_left0,
+                             img_left1, kp_left1,
+                             supporters, non_supporters,
+                             title="3.4: Supporters vs Non-supporters"):
+    """
+    Draw temporal matches left0 -> left1.
+    Supporters are green, non-supporters are red.
+    """
+    img0 = cv2.cvtColor(img_left0, cv2.COLOR_GRAY2RGB)
+    img1 = cv2.cvtColor(img_left1, cv2.COLOR_GRAY2RGB)
+
+    h0, w0 = img0.shape[:2]
+    canvas = np.hstack([img0, img1])
+
+    def draw_match(match, color):
+        pt0 = tuple(map(int, kp_left0[match.queryIdx].pt))
+        pt1_raw = kp_left1[match.trainIdx].pt
+        pt1 = (int(pt1_raw[0] + w0), int(pt1_raw[1]))
+
+        cv2.circle(canvas, pt0, 3, color, -1)
+        cv2.circle(canvas, pt1, 3, color, -1)
+        cv2.line(canvas, pt0, pt1, color, 1)
+
+    for match in non_supporters:
+        draw_match(match, (255, 0, 0))  # red
+
+    for match in supporters:
+        draw_match(match, (0, 255, 0))  # green
+
+    plt.figure(figsize=(16, 8))
+    plt.imshow(canvas)
+    plt.title(title + " | green=supporters, red=outliers")
+    plt.axis("off")
+
+def build_pnp_correspondences(frame0_data, frame1_data, good_temporal_matches):
+    """
+    Build all valid 3D <-> 2D correspondences that exist in all four images.
+    """
+
+    correspondences = []
+
+    # left0 keypoint -> (3D index, stereo match in frame0)
+    left0_to_3d = {
+        m.queryIdx: (idx, m)
+        for idx, m in enumerate(frame0_data['stereo_inliers'])
+    }
+
+    # left1 keypoint -> stereo match in frame1
+    left1_to_stereo = {
+        m.queryIdx: m
+        for m in frame1_data['stereo_inliers']
+    }
+
+    for temporal_match in good_temporal_matches:
+
+        left0_idx = temporal_match.queryIdx
+        left1_idx = temporal_match.trainIdx
+
+        # Must exist in all four images
+        if left0_idx not in left0_to_3d:
+            continue
+
+        if left1_idx not in left1_to_stereo:
+            continue
+
+        point_3d_idx, stereo_match0 = left0_to_3d[left0_idx]
+        stereo_match1 = left1_to_stereo[left1_idx]
+
+        X = frame0_data['points_3d'][point_3d_idx]
+
+        corr = {
+            'X': X,
+
+            'left0_match': stereo_match0,
+            'temporal_match': temporal_match,
+            'right1_match': stereo_match1,
+
+            'obs_left0':
+                np.array(frame0_data['kp_left'][stereo_match0.queryIdx].pt),
+
+            'obs_right0':
+                np.array(frame0_data['kp_right'][stereo_match0.trainIdx].pt),
+
+            'obs_left1':
+                np.array(frame1_data['kp_left'][temporal_match.trainIdx].pt),
+
+            'obs_right1':
+                np.array(frame1_data['kp_right'][stereo_match1.trainIdx].pt)
+        }
+
+        correspondences.append(corr)
+
+    return correspondences
+
+
+
+
+
+def evaluate_supporters(correspondences,
+                        frame0_data,
+                        frame1_data,
+                        R,
+                        t,
+                        threshold=2):
+    """
+    Return inliers and outliers for given pose.
+    """
+
+    k, P_left0, P_right0 = read_cameras()
+
+    # stereo translation
+    t_stereo = np.linalg.inv(k) @ P_right0[:, 3]
+
+    P_left1 = k @ np.hstack([R, t.reshape(3, 1)])
+
+    P_right1 = k @ np.hstack([
+        R,
+        (t.reshape(3) + t_stereo).reshape(3, 1)
+    ])
+
+    inliers = []
+    outliers = []
+
+    for corr in correspondences:
+
+        X = corr['X']
+
+        proj_left0 = project_point(P_left0, X)
+        proj_right0 = project_point(P_right0, X)
+        proj_left1 = project_point(P_left1, X)
+        proj_right1 = project_point(P_right1, X)
+
+        errors = [
+
+            np.linalg.norm(proj_left0 - corr['obs_left0']),
+            np.linalg.norm(proj_right0 - corr['obs_right0']),
+            np.linalg.norm(proj_left1 - corr['obs_left1']),
+            np.linalg.norm(proj_right1 - corr['obs_right1']),
+        ]
+
+        if all(e < threshold for e in errors):
+            inliers.append(corr)
+        else:
+            outliers.append(corr)
+
+    return inliers, outliers
+
+
+def draw_ransac_results(frame0_data,
+                        frame1_data,
+                        inliers,
+                        outliers):
+
+    img0 = cv2.cvtColor(
+        frame0_data['img_left'],
+        cv2.COLOR_GRAY2RGB
+    )
+
+    img1 = cv2.cvtColor(
+        frame1_data['img_left'],
+        cv2.COLOR_GRAY2RGB
+    )
+
+    h0, w0 = img0.shape[:2]
+
+    canvas = np.hstack([img0, img1])
+
+    def draw_corr(corr, color):
+
+        match = corr['temporal_match']
+
+        pt0 = tuple(map(
+            int,
+            frame0_data['kp_left'][match.queryIdx].pt
+        ))
+
+        pt1_raw = frame1_data['kp_left'][match.trainIdx].pt
+
+        pt1 = (
+            int(pt1_raw[0] + w0),
+            int(pt1_raw[1])
+        )
+
+        cv2.circle(canvas, pt0, 3, color, -1)
+        cv2.circle(canvas, pt1, 3, color, -1)
+
+        cv2.line(canvas, pt0, pt1, color, 1)
+
+    for corr in outliers:
+        draw_corr(corr, (255, 0, 0))
+
+    for corr in inliers:
+        draw_corr(corr, (0, 255, 0))
+
+    plt.figure(figsize=(16, 8))
+    plt.imshow(canvas)
+    plt.title("3.5: RANSAC Inliers (green) vs Outliers (red)")
+    plt.axis("off")
+
+def plot_transformed_clouds(frame0_data,
+                            frame1_data,
+                            R,
+                            t):
+    """
+    Plot pair0 cloud transformed into left1 coordinates
+    together with pair1 cloud.
+    """
+
+    cloud0 = frame0_data['points_3d']
+    cloud1 = frame1_data['points_3d']
+
+    # transform cloud0 into left1 coordinates
+    cloud0_transformed = (
+        R @ cloud0.T + t.reshape(3, 1)
+    ).T
+
+    # crop far points
+    mask0 = (
+        (cloud0_transformed[:, 2] > 0) &
+        (cloud0_transformed[:, 2] < 80)
+    )
+
+    mask1 = (
+        (cloud1[:, 2] > 0) &
+        (cloud1[:, 2] < 80)
+    )
+
+    cloud0_transformed = cloud0_transformed[mask0]
+    cloud1 = cloud1[mask1]
+
+    plt.figure(figsize=(10, 8))
+
+    # top-down view: X vs Z
+    plt.scatter(
+        cloud0_transformed[:, 0],
+        cloud0_transformed[:, 2],
+        s=2,
+        c='red',
+        label='Pair0 after T'
+    )
+
+    plt.scatter(
+        cloud1[:, 0],
+        cloud1[:, 2],
+        s=2,
+        c='blue',
+        label='Pair1'
+    )
+
+    plt.xlabel("X")
+    plt.ylabel("Z")
+
+    plt.title("3.5: Point Clouds Alignment")
+    plt.legend()
+    plt.axis('equal')
+    plt.grid(True)
+
+
+# --------------------------------------ex4---------------------------------------------------------
