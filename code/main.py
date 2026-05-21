@@ -1,9 +1,12 @@
+import time
+
 import cv2
 import matplotlib.pyplot as plt
 import random
-import van_utils_ex1 as lib
+import van_utils as lib
 import numpy as np
 
+NUM_FRAMES = 3300
 
 #--------------------------------------ex1---------------------------------------------------------
 def q1_1(idx=0, plot = True):
@@ -530,30 +533,137 @@ def q3_5(frame0_data,
 
     return refined_R, refined_t, final_inliers, final_outliers
 
+def q3_6(num_frames=NUM_FRAMES):
+    """
+    Full visual odometry pipeline over the whole movie.
+    """
+
+    print("\n==================== Task 3.6 ====================")
+
+    start_time = time.time()
+
+    # =========================
+    # Initial global pose
+    # left0 coordinates
+    # =========================
+
+    R_global = np.eye(3)
+    t_global = np.zeros((3, 1))
+
+    estimated_positions = [
+        lib.camera_center(R_global, t_global)
+    ]
+
+    # Ground truth
+    gt_poses = lib.read_ground_truth_poses()
+
+    gt_positions = []
+
+    for R_gt, t_gt in gt_poses[:num_frames]:
+
+        gt_positions.append(
+            lib.camera_center(R_gt, t_gt)
+        )
+
+    # =========================
+    # Process movie
+    # =========================
+
+    for idx in range(num_frames - 1):
+
+        print(f"\n========== Frame {idx} -> {idx+1} ==========")
+
+        # frame i
+        frame0_data = run_single_pair(
+            idx=idx,
+            display=False,
+            plot_3d=False
+        )
+
+        # frame i+1
+        frame1_data = run_single_pair(
+            idx=idx + 1,
+            display=False,
+            plot_3d=False
+        )
+
+        # temporal tracking
+        good_temporal_matches = q3_2(
+            frame0_data,
+            frame1_data
+        )
+
+        # relative pose using custom RANSAC
+        R_rel, t_rel, inliers, outliers = q3_5(
+            frame0_data,
+            frame1_data,
+            good_temporal_matches,
+            iterations=300,
+            threshold=2
+        )
+
+        # =========================
+        # Compose into global pose
+        # =========================
+
+        R_global, t_global = lib.compose_transform(
+            R_global,
+            t_global,
+            R_rel,
+            t_rel
+        )
+
+        # camera location
+        C = lib.camera_center(R_global, t_global)
+
+        estimated_positions.append(C)
+
+        print(f"Estimated camera position: {C}")
+
+    end_time = time.time()
+
+    total_time = end_time - start_time
+
+    print(f"\nTracking time: {total_time:.2f} seconds")
+
+    # =========================
+    # Plot trajectory
+    # =========================
+
+    lib.plot_trajectory(
+        estimated_positions,
+        gt_positions
+    )
+
+    return estimated_positions, gt_positions
 
 def q3(idx=0):
-    """
-    Main manager for Exercise 3.
-    Coordinates tasks 3.1, 3.2, 3.3 and the camera plot visualization.
-    """
+
     print(f"\n==================== Starting Ex 3 Pipeline (Frame {idx} -> {idx+1}) ====================")
-    
-    # 1. Get all data for the current frame (time t_0) with visualizations
+
+    # 3.1
     frame0_data = run_single_pair(idx=idx, display=True)
-    
-    # 2. Get all data for the next frame (time t_1) using task 3.1
+
+    # 3.1
     frame1_data = q3_1(idx=idx)
-    
-    # 3. Task 3.2: Match features between left_0 and left_1 over time
-    good_temporal_matches = q3_2(frame0_data, frame1_data)
-    
-    # 4. Task 3.3: Estimate camera matrix [R|t] using 4 points and PnP
-    R, t = q3_3(frame0_data, frame1_data, good_temporal_matches)
-    
-    # 5. Plot the relative camera positions from above
-    # We automatically calculate baseline from m2 if needed, here passed 0.54 as standard
+
+    # 3.2
+    good_temporal_matches = q3_2(
+        frame0_data,
+        frame1_data
+    )
+
+    # 3.3
+    R, t = q3_3(
+        frame0_data,
+        frame1_data,
+        good_temporal_matches
+    )
+
+    # camera visualization
     lib.plot_four_cameras(R, t, baseline=0.54)
 
+    # 3.4
     supporters, non_supporters = q3_4(
         frame0_data,
         frame1_data,
@@ -562,6 +672,8 @@ def q3(idx=0):
         t,
         threshold=2
     )
+
+    # 3.5
     R_ransac, t_ransac, inliers, outliers = q3_5(
         frame0_data,
         frame1_data,
@@ -582,15 +694,31 @@ def q3(idx=0):
         t_ransac
     )
 
-    return frame0_data, frame1_data, good_temporal_matches, R, t, supporters, non_supporters
+    # 3.6
+    estimated_positions, gt_positions = q3_6(
+        num_frames=NUM_FRAMES
+    )
+
+    return {
+        'frame0_data': frame0_data,
+        'frame1_data': frame1_data,
+        'good_temporal_matches': good_temporal_matches,
+        'R': R,
+        't': t,
+        'R_ransac': R_ransac,
+        't_ransac': t_ransac,
+        'inliers': inliers,
+        'outliers': outliers,
+        'trajectory_estimated': estimated_positions,
+        'trajectory_gt': gt_positions
+    }
+
+
 
 def main():
-    frame_indices = [0, 1, 2, 3, 4]
 
-    # for idx in frame_indices:
-    #     print(f"\n========== Frame {idx} ==========")
-    #     run_single_pair2(idx)
     q3()
+
     plt.show()
 
 

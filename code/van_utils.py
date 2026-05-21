@@ -6,7 +6,7 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DATA_PATH = PROJECT_ROOT / 'dataset' / 'dataset_2026' / 'sequences' / '00'
+DATA_PATH = PROJECT_ROOT / 'dataset' / 'dataset' / 'sequences' / '00'
 
 #--------------------------------------ex1---------------------------------------------------------
 def read_images(idx):
@@ -509,6 +509,92 @@ def plot_transformed_clouds(frame0_data,
     plt.ylabel("Z")
 
     plt.title("3.5: Point Clouds Alignment")
+    plt.legend()
+    plt.axis('equal')
+    plt.grid(True)
+
+import time
+
+
+def compose_transform(R1, t1, R2, t2):
+    """
+    Compose:
+        T1: world -> i
+        T2: i -> i+1
+
+    Return:
+        world -> i+1
+    """
+
+    R_new = R2 @ R1
+    t_new = R2 @ t1 + t2
+
+    return R_new, t_new
+
+
+def camera_center(R, t):
+    """
+    Camera center in world coordinates:
+        C = -R^T t
+    """
+
+    return (-R.T @ t).flatten()
+
+
+def read_ground_truth_poses():
+    """
+    Read KITTI ground truth poses.
+    """
+
+    poses_path = PROJECT_ROOT / 'dataset' / 'dataset' / 'poses' / '00.txt'
+
+    gt_poses = []
+
+    with open(poses_path, 'r') as f:
+
+        for line in f:
+
+            values = list(map(float, line.strip().split()))
+
+            M = np.array(values).reshape(3, 4)
+
+            R = M[:, :3]
+            t = M[:, 3].reshape(3, 1)
+
+            gt_poses.append((R, t))
+
+    return gt_poses
+
+
+def plot_trajectory(est_positions, gt_positions):
+    """
+    Plot estimated and ground-truth trajectories from top view.
+    """
+
+    est_positions = np.array(est_positions)
+    gt_positions = np.array(gt_positions)
+
+    plt.figure(figsize=(10, 8))
+
+    plt.plot(
+        est_positions[:, 0],
+        est_positions[:, 2],
+        label='Estimated trajectory',
+        linewidth=2
+    )
+
+    plt.plot(
+        gt_positions[:, 0],
+        gt_positions[:, 2],
+        label='Ground truth',
+        linewidth=2
+    )
+
+    plt.xlabel("X")
+    plt.ylabel("Z")
+
+    plt.title("3.6: Camera Trajectory (Top View)")
+
     plt.legend()
     plt.axis('equal')
     plt.grid(True)
