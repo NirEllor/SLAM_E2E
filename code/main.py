@@ -6,7 +6,7 @@ import van_utils as lib
 import numpy as np
 from tracking_database_custom import TrackingDB
 
-NUM_FRAMES = 3300
+NUM_FRAMES = lib.get_num_frames()
 
 #--------------------------------------ex1---------------------------------------------------------
 def q1_1(idx=0, plot = True):
@@ -802,7 +802,7 @@ def benchmark_tracking_configs(idx=0):
 
 
 
-def q4_1(num_frames=50):
+def q4_1(num_frames=NUM_FRAMES):
 
     db = TrackingDB()
 
@@ -883,22 +883,47 @@ def q4_1(num_frames=50):
     return db
 
 def q4_2():
-    db = q4_1(50)
+    db = q4_1(NUM_FRAMES)
     stats = lib.compute_tracking_statistics(db)
     lib.print_tracking_statistics(stats)
     return db
 
+def q4_3(db):
+    track_id = lib.select_track_by_min_length(db, min_length=6)
 
+    print(f"Selected track id: {track_id}")
+    print(f"Track length: {len(db.frames(track_id))}")
+    print(f"Frames: {db.frames(track_id)}")
+
+    lib.plot_track_observations(
+        db,
+        track_id,
+        crop_size=20
+    )
+
+def q4_4(db):
+
+    connectivity = lib.compute_connectivity(db)
+
+    print(
+        f"Mean connectivity: "
+        f"{np.mean(connectivity):.2f}"
+    )
+
+    lib.plot_connectivity(connectivity)
 
 def main():
-    # q3_6(num_frames=lib.get_num_frames())
+    # q3_6(num_frames=NUM_FRAMES)
     # plt.savefig("plot.png")
-    # plt.show()
 
     db = q4_2()
 
-    # Optional debug
-    # debug_tracking_database(db, frame_id=10)
+    q4_3(db)
+
+    q4_4(db)
+
+    plt.show()
+
 
 if __name__ == '__main__':
     main()

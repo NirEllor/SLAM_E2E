@@ -751,3 +751,143 @@ def debug_tracking_database(db, frame_id=10):
     print("Longest track id:", longest_track)
     print("Length:", len(db.frames(longest_track)))
     print("Frames:", db.frames(longest_track))
+
+
+def select_track_by_min_length(db, min_length=6):
+    valid_tracks = [
+        track_id
+        for track_id in db.track_to_frames
+        if len(db.frames(track_id)) >= min_length
+    ]
+
+    if len(valid_tracks) == 0:
+        raise RuntimeError(f"No track with length >= {min_length}")
+
+    return max(
+        valid_tracks,
+        key=lambda t: len(db.frames(t))
+    )
+
+def crop_around_point(img, x, y, crop_size=20):
+    h, w = img.shape[:2]
+    half = crop_size // 2
+
+    x = int(round(x))
+    y = int(round(y))
+
+    x1 = max(0, x - half)
+    x2 = min(w, x + half)
+
+    y1 = max(0, y - half)
+    y2 = min(h, y + half)
+
+    crop = img[y1:y2, x1:x2]
+
+    local_x = x - x1
+    local_y = y - y1
+
+    return crop, local_x, local_y
+
+
+def plot_track_observations(db, track_id, crop_size=20):
+    frames = db.frames(track_id)
+
+    num_rows = len(frames)
+
+    fig, axes = plt.subplots(
+        num_rows,
+        2,
+        figsize=(10, 2.2 * num_rows)
+    )
+
+    if num_rows == 1:
+        axes = np.array([axes])
+
+    fig.suptitle(
+        f"Track #{track_id}, length={len(frames)}",
+        fontsize=14
+    )
+
+    for row, frame_id in enumerate(frames):
+        obs = db.observation(frame_id, track_id)
+
+        img_left, _ = read_images(frame_id)
+
+        x = obs.x_left
+        y = obs.y
+
+        crop, local_x, local_y = crop_around_point(
+            img_left,
+            x,
+            y,
+            crop_size=crop_size
+        )
+
+        # full image
+        ax_img = axes[row, 0]
+        ax_img.imshow(img_left, cmap="gray")
+        ax_img.scatter([x], [y], c="red", marker="x", s=40)
+        ax_img.set_title(f"Frame {frame_id}")
+        ax_img.axis("off")
+
+        # crop
+        ax_crop = axes[row, 1]
+        ax_crop.imshow(crop, cmap="gray")
+        ax_crop.scatter([local_x], [local_y], c="red", marker="x", s=40)
+        ax_crop.set_title(f"{crop_size}x{crop_size} crop")
+        ax_crop.axis("off")
+
+    plt.tight_layout()
+
+
+def compute_connectivity(db):
+
+    connectivity = []
+
+    num_frames = db.frame_num()
+
+    for frame_id in range(num_frames - 1):
+
+        current_tracks = set(
+            db.tracks(frame_id)
+        )
+
+        next_tracks = set(
+            db.tracks(frame_id + 1)
+        )
+
+        outgoing_tracks = len(
+            current_tracks & next_tracks
+        )
+
+        connectivity.append(
+            outgoing_tracks
+        )
+
+    return connectivity
+
+
+def plot_connectivity(connectivity):
+
+    plt.figure(figsize=(12, 5))
+
+    plt.plot(
+        connectivity,
+        linewidth=1
+    )
+
+    plt.axhline(
+        np.mean(connectivity),
+        color="green",
+        linestyle="--",
+        label=f"Mean={np.mean(connectivity):.1f}"
+    )
+
+    plt.title("Connectivity")
+    plt.xlabel("Frame")
+    plt.ylabel("Outgoing Tracks")
+
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
