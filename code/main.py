@@ -789,6 +789,7 @@ def benchmark_tracking_configs(idx=0):
                 pnp_method=pnp_method
             )
 
+
             print(f"Temporal matches: {len(matches)}")
             print(f"Inliers: {len(inliers)}")
             print(f"Outliers: {len(outliers)}")
@@ -805,6 +806,8 @@ def benchmark_tracking_configs(idx=0):
 def q4_1(num_frames=NUM_FRAMES):
 
     db = TrackingDB()
+
+    inlier_percentages = []
 
     prev_data = run_single_pair(
         idx=0,
@@ -827,6 +830,28 @@ def q4_1(num_frames=NUM_FRAMES):
             curr_data,
             draw=False
         )
+
+        try:
+            R, t, inliers, outliers = q3_5(
+                prev_data,
+                curr_data,
+                temporal_matches,
+                iterations=50,
+                threshold=2
+            )
+
+            total = len(inliers) + len(outliers)
+
+            if total > 0:
+                inlier_percentages.append(
+                    100 * len(inliers) / total
+                )
+            else:
+                inlier_percentages.append(0)
+
+        except RuntimeError as e:
+            print(f"PnP-RANSAC failed for frame {idx - 1}->{idx}: {e}")
+            inlier_percentages.append(0)
 
         prev_stereo = lib.build_stereo_dict(prev_data)
         curr_stereo = lib.build_stereo_dict(curr_data)
@@ -880,10 +905,11 @@ def q4_1(num_frames=NUM_FRAMES):
 
         prev_data = curr_data
 
+    db.inlier_percentages = inlier_percentages
+
     return db
 
-def q4_2():
-    db = q4_1(NUM_FRAMES)
+def q4_2(db):
     stats = lib.compute_tracking_statistics(db)
     lib.print_tracking_statistics(stats)
     return db
@@ -912,17 +938,40 @@ def q4_4(db):
 
     lib.plot_connectivity(connectivity)
 
+def q4_5(db):
+
+    print("\n--- Task 4.5 ---")
+
+    mean_inliers = np.mean(
+        db.inlier_percentages
+    )
+
+    print(
+        f"Mean inlier percentage: "
+        f"{mean_inliers:.2f}%"
+    )
+
+    lib.plot_inlier_percentage(
+        db.inlier_percentages
+    )
+
+def q4_6(db):
+    lib.plot_track_length_histogram(
+        db,
+        min_length=2
+    )
+
 def main():
     # q3_6(num_frames=NUM_FRAMES)
     # plt.savefig("plot.png")
 
-    db = q4_2()
+    db = q4_1(lib.get_num_frames())
 
+    q4_2(db)
     q4_3(db)
-
     q4_4(db)
-
-    plt.show()
+    q4_5(db)
+    q4_6(db)
 
 
 if __name__ == '__main__':

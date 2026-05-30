@@ -891,3 +891,63 @@ def plot_connectivity(connectivity):
     plt.grid(True)
 
     plt.tight_layout()
+
+def plot_inlier_percentage(inlier_percentages):
+
+    plt.figure(figsize=(12, 5))
+
+    plt.plot(
+        inlier_percentages,
+        linewidth=1
+    )
+
+    mean_val = np.mean(inlier_percentages)
+
+    plt.axhline(
+        mean_val,
+        color="green",
+        linestyle="--",
+        label=f"Mean={mean_val:.2f}%"
+    )
+
+    plt.title("Inlier Percentage Per Frame")
+    plt.xlabel("Frame")
+    plt.ylabel("Inlier Percentage (%)")
+
+    plt.grid(True)
+    plt.legend()
+
+    plt.tight_layout()
+
+
+def compute_track_lengths(db, min_length=2):
+    return [
+        len(db.frames(track_id))
+        for track_id in db.track_to_frames
+        if len(db.frames(track_id)) >= min_length
+    ]
+
+def plot_track_length_histogram(db, min_length=2):
+    track_lengths = compute_track_lengths(db, min_length=min_length)
+
+    plt.figure(figsize=(12, 5))
+
+    bins = range(
+        min(track_lengths),
+        max(track_lengths) + 2
+    )
+
+    plt.hist(
+        track_lengths,
+        bins=bins,
+        edgecolor="black"
+    )
+
+    plt.yscale("log")
+
+    plt.title("Track Length Histogram")
+    plt.xlabel("Track Length")
+    plt.ylabel("Track Count")
+
+    plt.grid(True, axis="y")
+    plt.tight_layout()
