@@ -973,6 +973,7 @@ def main():
     q4_5(db)
     q4_6(db)
 
+    plt.show()
 
 if __name__ == '__main__':
     main()
