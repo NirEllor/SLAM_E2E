@@ -1,5 +1,4 @@
 import time
-
 import cv2
 import matplotlib.pyplot as plt
 import random
@@ -138,52 +137,52 @@ def run_single_pair(idx=0, display=False, plot_3d=True):
     """
     if display:
         print(f"\n========== Processing Frame {idx} (with Visualizations) ==========")
-    
+
     # 1. Read images and extract features
     img1, img2 = lib.read_images(idx)
     kp1, des1 = lib.get_orb_features(img1)
     kp2, des2 = lib.get_orb_features(img2)
-    
+
     assert len(kp1) >= 500 and len(kp2) >= 500, f"Insufficient keypoints in frame {idx}!"
-    
+
     # Optional display for keypoints (only if global display is True)
     if display:
         img1_kp = cv2.drawKeypoints(img1, kp1, None, color=(0, 255, 0))
         img2_kp = cv2.drawKeypoints(img2, kp2, None, color=(0, 255, 0))
         lib.plot_stereo_side_by_side(img1_kp, img2_kp, f"Frame {idx}: ORB Keypoints")
         q1_2(des1)
-    
+
     # 2. Initial brute-force matching
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     matches = bf.match(des1, des2)
-    
+
     if display:
         lib.draw_matches_custom(img1, kp1, img2, kp2, matches, f"Frame {idx}: Raw Matches")
         q1_4(img1, img2, kp1, kp2, des1, des2) # Significance test visualization
         q2_1(kp1, kp2, matches)                # Deviation histogram
-    
+
     # 3. Filter matches using the rectified stereo pattern
     inliers, outliers = lib.split_matches_by_rectified_pattern(
         kp1, kp2, matches, threshold=2
     )
-    
+
     if display:
         print(f"Frame {idx} - Inliers: {len(inliers)}, Outliers: {len(outliers)}")
         lib.draw_inliers_outliers(img1, kp1, img2, kp2, inliers, outliers)
-    
+
     # 4. Triangulation to build the 3D point cloud
     k, m1, m2 = lib.read_cameras()
     points1, points2 = lib.get_matched_points(kp1, kp2, inliers)
     points_3d = lib.triangulate_points_opencv(points1, points2, m1, m2)
-    
+
     # <<=== התיקון כאן: מציג את הגרף הסופי אם display=True או אם plot_3d=True ===>>
     if display or plot_3d:
         # פילטר קטן כדי לנקות את נקודות האינסוף שראינו קודם ולא להרוס את הגרף
         valid_mask = (points_3d[:, 2] > 0) & (points_3d[:, 2] < 100)
         clean_points_3d = points_3d[valid_mask]
-        
+
         lib.plot_3d_points(clean_points_3d, title=f"Frame {idx}: Final 3D Point Cloud")
-    
+
     # Return everything so task 3 has full access to images, keypoints, and 3D data
     return {
         'img_left': img1,
@@ -204,112 +203,111 @@ def q3_1(idx=0):
     filter outliers, and triangulate. Then, plots the resulting 3D cloud.
     """
     print(f"\n--- Task 3.1: Generating Data for Next Stereo Pair (Frame {idx + 1}) ---")
-    
+
     # 1. Run the updated single pair pipeline for the next frame without intermediate plots
     frame1_data = run_single_pair(idx=idx + 1, display=False)
-    
+
     # 2. Plot only the 3D point cloud required for task 3.1
     lib.plot_3d_points(frame1_data['points_3d'], title=f"3.1: Point Cloud for Frame {idx + 1}")
-    
+
     # 3. Return the full dictionary containing all extracted data for frame 1
     return frame1_data
 
-def q3_2(frame0_data, frame1_data):
+def q3_2(frame0_data, frame1_data, draw=False):
     """
     3.2: Match features between the two left images (left_0 and left_1).
-    Uses a brute-force KNN matcher and filters the results using a 
-    Significance (Ratio) Test. Since the camera has moved over time, 
-    the images are not rectified, so the vertical stereo constraint cannot be used.
+    Uses BF-KNN matcher + Lowe ratio test.
     """
+
     print("\n--- Task 3.2: Matching Features Between Left_0 and Left_1 ---")
-    
-    # Extract images, keypoints, and descriptors from the frame data dictionaries
+
     img_left0 = frame0_data['img_left']
     img_left1 = frame1_data['img_left']
-    
+
     kp_left0 = frame0_data['kp_left']
     kp_left1 = frame1_data['kp_left']
-    
+
     des_left0 = frame0_data['des_left']
     des_left1 = frame1_data['des_left']
-    
-    # 1. Initialize Brute-Force Matcher for Hamming distance (suitable for ORB)
+
     bf = cv2.BFMatcher(cv2.NORM_HAMMING)
-    
-    # 2. Find the top 2 best matches for each descriptor to apply the ratio test
+
     knn_matches = bf.knnMatch(des_left0, des_left1, k=2)
-    
-    # 3. Apply Lowe's Significance (Ratio) Test with a threshold of 0.7
+
     good_temporal_matches = []
+
     for m, n in knn_matches:
         if m.distance < 0.7 * n.distance:
             good_temporal_matches.append(m)
-            
-    print(f"Found {len(good_temporal_matches)} validated temporal matches between left_0 and left_1.")
-    
-    # 4. Draw 20 random matches to visualize the temporal motion tracking (red arrows/lines)
-    lib.draw_matches_custom(
-        img_left0, kp_left0, 
-        img_left1, kp_left1, 
-        good_temporal_matches, 
-        title="3.2: Matches between Left_0 and Left_1 (Temporal Tracking)"
-    )
-    
-    # Return the filtered temporal matches for downstream PnP and RANSAC optimization
-    return good_temporal_matches
 
+    print(
+        f"Found {len(good_temporal_matches)} validated temporal matches "
+        f"between left_0 and left_1."
+    )
+
+    if draw:
+        lib.draw_matches_custom(
+            img_left0,
+            kp_left0,
+            img_left1,
+            kp_left1,
+            good_temporal_matches,
+            title="3.2: Matches between Left_0 and Left_1 (Temporal Tracking)"
+        )
+
+    return good_temporal_matches
 def q3_3(frame0_data, frame1_data, good_temporal_matches):
     """
     3.3: Estimate the camera motion between frame 0 and frame 1 using PnP.
-    Selects 4 random corresponding points between 3D points of frame 0 and 
+    Selects 4 random corresponding points between 3D points of frame 0 and
     2D pixels of left_1, applies cv2.solvePnP, and extracts [R|t].
     """
     print("\n--- Task 3.3: PnP Motion Estimation with 4 Points ---")
-    
+
     # 1. Get the camera intrinsic matrix K
     k, _, _ = lib.read_cameras()
-    
+
     # 2. Map temporal matches to link 3D points (from t0) with 2D pixels (in left_1)
     # The 'stereo_inliers' in frame 0 correspond to the indices of 'points_3d'
     # We need to match the indices of the keypoints tracked over time
     pts_3d_list = []
     pts_2d_list = []
-    
+
     # Create a mapping from queryIdx (kp in left_0) to its corresponding 3D point index
     # Since points_3d aligns with the stereo_inliers of frame 0:
     left0_pt_to_3d_idx = {m.queryIdx: idx for idx, m in enumerate(frame0_data['stereo_inliers'])}
-    
+
     # Cross-reference with temporal matches (left_0 -> left_1)
     for match in good_temporal_matches:
         if match.queryIdx in left0_pt_to_3d_idx:
             # Get the 3D point from frame 0
             three_d_idx = left0_pt_to_3d_idx[match.queryIdx]
             p3d = frame0_data['points_3d'][three_d_idx]
-            
+
             # Get the 2D pixel coordinate from left_1
             p2d = frame1_data['kp_left'][match.trainIdx].pt
-            
+
             pts_3d_list.append(p3d)
             pts_2d_list.append(p2d)
-            
+
     # Convert lists to NumPy arrays as required by OpenCV
     pts_3d_all = np.array(pts_3d_list, dtype=np.float32)
     pts_2d_all = np.array(pts_2d_list, dtype=np.float32)
-    
+
     print(f"Total matching consensus points available for PnP: {len(pts_3d_all)}")
     assert len(pts_3d_all) >= 4, "Not enough matching points found across all four images!"
-    
+
     # 3. Select exactly 4 corresponding points as requested by the specification
     # We can pick 4 random indices or the first 4 indices
-    indices = [0, 1, 2, 3] 
+    indices = [0, 1, 2, 3]
     object_points = pts_3d_all[indices]
     image_points = pts_2d_all[indices]
-    
+
     print("\nSelected 4 Object Points (3D from t0):")
     print(object_points)
     print("Selected 4 Image Points (2D from left_1):")
     print(image_points)
-    
+
     # 4. Apply the PnP algorithm using OpenCV
     # distCoeffs is None because our dataset images are already rectified and distortion-free
     success, rvec, tvec = cv2.solvePnP(
@@ -317,22 +315,22 @@ def q3_3(frame0_data, frame1_data, good_temporal_matches):
         imagePoints=image_points,
         cameraMatrix=k,
         distCoeffs=None,
-        flags=cv2.SOLVEPNP_EPNP 
+        flags=cv2.SOLVEPNP_EPNP
     )
-    
+
     if not success:
         raise RuntimeError("PnP solver failed to find a valid pose matrix estimation.")
-        
+
     # 5. Convert the rotation vector (rvec) to a 3x3 rotation matrix (R)
     R, _ = cv2.Rodrigues(rvec)
     t = tvec
-    
+
     print("\n--- Extrinsic Camera Matrix Results [R|t] ---")
     print("Rotation Matrix (R, 3x3):")
     print(R)
     print("Translation Vector (t, 3x1):")
     print(t)
-    
+
     return R, t
 
 def q3_4(frame0_data, frame1_data, good_temporal_matches, R, t, threshold=2):
@@ -423,10 +421,13 @@ def q3_4(frame0_data, frame1_data, good_temporal_matches, R, t, threshold=2):
 def q3_5(frame0_data,
          frame1_data,
          good_temporal_matches,
-         iterations=500,
-         threshold=2):
+         iterations=50,
+         threshold=2,
+         early_stop_ratio=0.78,
+         max_no_improvement=12,
+         pnp_method=cv2.SOLVEPNP_EPNP):
     """
-    Custom RANSAC with PnP as inner model.
+    3.5: Custom PnP-RANSAC with dynamic stopping.
     """
 
     print("\n--- Task 3.5: Custom PnP-RANSAC ---")
@@ -441,13 +442,16 @@ def q3_5(frame0_data,
 
     print(f"Total correspondences: {len(correspondences)}")
 
+    if len(correspondences) < 4:
+        raise RuntimeError("Not enough correspondences for PnP-RANSAC.")
+
     best_inliers = []
     best_R = None
     best_t = None
+    no_improvement = 0
 
     for i in range(iterations):
 
-        # Random minimal sample of 4 correspondences
         sample = random.sample(correspondences, 4)
 
         object_points = np.array(
@@ -465,10 +469,11 @@ def q3_5(frame0_data,
             imagePoints=image_points,
             cameraMatrix=k,
             distCoeffs=None,
-            flags=cv2.SOLVEPNP_EPNP
+            flags=pnp_method
         )
 
         if not success:
+            no_improvement += 1
             continue
 
         R, _ = cv2.Rodrigues(rvec)
@@ -480,20 +485,29 @@ def q3_5(frame0_data,
             frame1_data,
             R,
             t,
-            threshold
+            threshold=threshold
         )
 
         if len(inliers) > len(best_inliers):
-
             best_inliers = inliers
             best_R = R
             best_t = t
+            no_improvement = 0
+
+            if len(best_inliers) > early_stop_ratio * len(correspondences):
+                print(f"Early stopping at iteration {i}")
+                break
+        else:
+            no_improvement += 1
+
+        if no_improvement >= max_no_improvement:
+            print(f"Dynamic stopping at iteration {i}: no significant improvement.")
+            break
+
+    if best_R is None or len(best_inliers) < 4:
+        raise RuntimeError("RANSAC failed to find a valid pose.")
 
     print(f"Best inliers found: {len(best_inliers)}")
-
-    # =========================
-    # Refinement step
-    # =========================
 
     object_points = np.array(
         [c['X'] for c in best_inliers],
@@ -505,135 +519,144 @@ def q3_5(frame0_data,
         dtype=np.float32
     )
 
+    rvec_guess, _ = cv2.Rodrigues(best_R)
+
     success, rvec, tvec = cv2.solvePnP(
         objectPoints=object_points,
         imagePoints=image_points,
         cameraMatrix=k,
         distCoeffs=None,
-        flags=cv2.SOLVEPNP_EPNP
+        rvec=rvec_guess,
+        tvec=best_t,
+        useExtrinsicGuess=True,
+        flags=cv2.SOLVEPNP_ITERATIVE
     )
 
-    if not success:
-        raise RuntimeError("Refinement PnP failed.")
+    if success:
+        refined_R, _ = cv2.Rodrigues(rvec)
+        refined_t = tvec
 
-    refined_R, _ = cv2.Rodrigues(rvec)
-    refined_t = tvec
+        final_inliers, final_outliers = lib.evaluate_supporters(
+            correspondences,
+            frame0_data,
+            frame1_data,
+            refined_R,
+            refined_t,
+            threshold=threshold
+        )
+
+        if len(final_inliers) >= 0.8 * len(best_inliers):
+            print(f"Final refined inliers: {len(final_inliers)}")
+            print(f"Final refined outliers: {len(final_outliers)}")
+            return refined_R, refined_t, final_inliers, final_outliers
 
     final_inliers, final_outliers = lib.evaluate_supporters(
         correspondences,
         frame0_data,
         frame1_data,
-        refined_R,
-        refined_t,
-        threshold
+        best_R,
+        best_t,
+        threshold=threshold
     )
 
-    print(f"Final refined inliers: {len(final_inliers)}")
-    print(f"Final refined outliers: {len(final_outliers)}")
+    print("Refinement rejected; using best RANSAC pose.")
+    print(f"Final inliers: {len(final_inliers)}")
+    print(f"Final outliers: {len(final_outliers)}")
 
-    return refined_R, refined_t, final_inliers, final_outliers
-
-def q3_6(num_frames=NUM_FRAMES):
-    """
-    Full visual odometry pipeline over the whole movie.
-    """
-
+    return best_R, best_t, final_inliers, final_outliers
+def q3_6(num_frames=20):
     print("\n==================== Task 3.6 ====================")
 
     start_time = time.time()
 
-    # =========================
-    # Initial global pose
-    # left0 coordinates
-    # =========================
-
     R_global = np.eye(3)
     t_global = np.zeros((3, 1))
 
-    estimated_positions = [
-        lib.camera_center(R_global, t_global)
+    estimated_positions = [lib.camera_center(R_global, t_global)]
+
+    gt_poses = lib.read_ground_truth_poses()
+    gt_positions = [
+        lib.camera_center(R_gt, t_gt)
+        for R_gt, t_gt in gt_poses[:num_frames]
     ]
 
-    # Ground truth
-    gt_poses = lib.read_ground_truth_poses()
-
-    gt_positions = []
-
-    for R_gt, t_gt in gt_poses[:num_frames]:
-
-        gt_positions.append(
-            lib.camera_center(R_gt, t_gt)
-        )
-
-    # =========================
-    # Process movie
-    # =========================
+    # compute first frame only once
+    prev_data = run_single_pair(
+        idx=0,
+        display=False,
+        plot_3d=False
+    )
 
     for idx in range(num_frames - 1):
+        print(f"\n========== Frame {idx} -> {idx + 1} ==========")
 
-        print(f"\n========== Frame {idx} -> {idx+1} ==========")
-
-        # frame i
-        frame0_data = run_single_pair(
-            idx=idx,
-            display=False,
-            plot_3d=False
-        )
-
-        # frame i+1
-        frame1_data = run_single_pair(
+        # compute only next frame
+        next_data = run_single_pair(
             idx=idx + 1,
             display=False,
             plot_3d=False
         )
 
-        # temporal tracking
         good_temporal_matches = q3_2(
-            frame0_data,
-            frame1_data
+            prev_data,
+            next_data,
+            draw=False
         )
 
-        # relative pose using custom RANSAC
-        R_rel, t_rel, inliers, outliers = q3_5(
-            frame0_data,
-            frame1_data,
-            good_temporal_matches,
-            iterations=300,
-            threshold=2
-        )
+        try:
+            R_rel, t_rel, inliers, outliers = q3_5(
+                prev_data,
+                next_data,
+                good_temporal_matches,
+                iterations=50,
+                threshold=2
+            )
+        except RuntimeError as e:
+            print(f"Pose estimation failed: {e}")
+            prev_data = next_data
+            estimated_positions.append(estimated_positions[-1])
+            continue
 
-        # =========================
-        # Compose into global pose
-        # =========================
+        if len(inliers) < 30:
+            print("Pose rejected due to too few inliers; skipping this frame.")
+            prev_data = next_data
+            estimated_positions.append(estimated_positions[-1])
+            continue
 
-        R_global, t_global = lib.compose_transform(
+        C_prev = lib.camera_center(R_global, t_global)
+
+        R_candidate, t_candidate = lib.compose_transform(
             R_global,
             t_global,
             R_rel,
             t_rel
         )
 
-        # camera location
-        C = lib.camera_center(R_global, t_global)
+        C_candidate = lib.camera_center(R_candidate, t_candidate)
 
+        step_size = np.linalg.norm(C_candidate - C_prev)
+
+        if step_size > 3.0:
+            print(f"Pose rejected due to unreasonable step size: step={step_size:.2f}")
+            prev_data = next_data
+            estimated_positions.append(estimated_positions[-1])
+            continue
+
+        R_global, t_global = R_candidate, t_candidate
+
+        C = lib.camera_center(R_global, t_global)
         estimated_positions.append(C)
 
         print(f"Estimated camera position: {C}")
+        print(f"Inliers: {len(inliers)}, Outliers: {len(outliers)}")
 
-    end_time = time.time()
+        # reuse
+        prev_data = next_data
 
-    total_time = end_time - start_time
-
+    total_time = time.time() - start_time
     print(f"\nTracking time: {total_time:.2f} seconds")
 
-    # =========================
-    # Plot trajectory
-    # =========================
-
-    lib.plot_trajectory(
-        estimated_positions,
-        gt_positions
-    )
+    lib.plot_trajectory(estimated_positions, gt_positions)
 
     return estimated_positions, gt_positions
 
@@ -664,7 +687,7 @@ def q3(idx=0):
     lib.plot_four_cameras(R, t, baseline=0.54)
 
     # 3.4
-    supporters, non_supporters = q3_4(
+    q3_4(
         frame0_data,
         frame1_data,
         good_temporal_matches,
@@ -713,14 +736,64 @@ def q3(idx=0):
         'trajectory_gt': gt_positions
     }
 
+def get_num_frames():
+    image_dir = lib.DATA_PATH / 'image_0'
+    return len(list(image_dir.glob("*.png")))
+
+def benchmark_tracking_configs(idx=0):
+    configs = [
+        ("ORB", 700, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1000, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1500, cv2.SOLVEPNP_EPNP),
+        ("AKAZE", 0, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1000, cv2.SOLVEPNP_P3P),
+        ("ORB", 1000, cv2.SOLVEPNP_AP3P),
+    ]
+
+    for detector_type, n_features, pnp_method in configs:
+        print("\n================================")
+        print(f"Detector={detector_type}, n_features={n_features}, PnP={pnp_method}")
+
+        frame0_data = run_single_pair(
+            idx=idx,
+            display=False,
+            plot_3d=False
+        )
+
+        frame1_data = run_single_pair(
+            idx=idx + 1,
+            display=False,
+            plot_3d=False
+        )
+
+        matches = q3_2(frame0_data, frame1_data, draw=False)
+
+        try:
+            R, t, inliers, outliers = q3_5(
+                frame0_data,
+                frame1_data,
+                matches,
+                iterations=50,
+                threshold=2,
+                pnp_method=pnp_method
+            )
+
+            print(f"Temporal matches: {len(matches)}")
+            print(f"Inliers: {len(inliers)}")
+            print(f"Outliers: {len(outliers)}")
+            print(f"Inlier ratio: {len(inliers) / (len(inliers) + len(outliers)):.3f}")
+
+        except RuntimeError as e:
+            print(f"Failed: {e}")
+
+
+#--------------------------------------ex4---------------------------------------------------------
 
 
 def main():
-
-    q3()
-
+    q3_6(num_frames=get_num_frames())
+    plt.savefig("plot.png")
     plt.show()
-
 
 if __name__ == '__main__':
     main()

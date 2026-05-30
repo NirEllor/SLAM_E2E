@@ -17,7 +17,7 @@ def read_images(idx):
         raise FileNotFoundError(f"Could not find images at {DATA_PATH}")
     return img1, img2
 
-def get_orb_features(img, n_features=1000):
+def get_orb_features(img, n_features=700):
     orb = cv2.ORB_create(nfeatures=n_features)
     kp, des = orb.detectAndCompute(img, None)
     return kp, des
@@ -350,8 +350,21 @@ def build_pnp_correspondences(frame0_data, frame1_data, good_temporal_matches):
 
     return correspondences
 
+def project_points_vectorized(P, X):
+    """
+    Project many 3D points using projection matrix P.
+    X shape: (N, 3)
+    returns: (N, 2)
+    """
+    X_h = np.hstack([X, np.ones((X.shape[0], 1))])
+    x_h = (P @ X_h.T).T
 
+    valid = np.abs(x_h[:, 2]) > 1e-12
 
+    projected = np.full((X.shape[0], 2), np.nan)
+    projected[valid] = x_h[valid, :2] / x_h[valid, 2:3]
+
+    return projected
 
 
 def evaluate_supporters(correspondences,
@@ -361,12 +374,11 @@ def evaluate_supporters(correspondences,
                         t,
                         threshold=2):
     """
-    Return inliers and outliers for given pose.
+    Vectorized supporter evaluation for a given pose.
     """
 
     k, P_left0, P_right0 = read_cameras()
 
-    # stereo translation
     t_stereo = np.linalg.inv(k) @ P_right0[:, 3]
 
     P_left1 = k @ np.hstack([R, t.reshape(3, 1)])
@@ -376,32 +388,43 @@ def evaluate_supporters(correspondences,
         (t.reshape(3) + t_stereo).reshape(3, 1)
     ])
 
-    inliers = []
-    outliers = []
+    X = np.array([c['X'] for c in correspondences], dtype=np.float64)
 
-    for corr in correspondences:
+    obs_left0 = np.array([c['obs_left0'] for c in correspondences])
+    obs_right0 = np.array([c['obs_right0'] for c in correspondences])
+    obs_left1 = np.array([c['obs_left1'] for c in correspondences])
+    obs_right1 = np.array([c['obs_right1'] for c in correspondences])
 
-        X = corr['X']
+    proj_left0 = project_points_vectorized(P_left0, X)
+    proj_right0 = project_points_vectorized(P_right0, X)
+    proj_left1 = project_points_vectorized(P_left1, X)
+    proj_right1 = project_points_vectorized(P_right1, X)
 
-        proj_left0 = project_point(P_left0, X)
-        proj_right0 = project_point(P_right0, X)
-        proj_left1 = project_point(P_left1, X)
-        proj_right1 = project_point(P_right1, X)
+    err_left0 = np.linalg.norm(proj_left0 - obs_left0, axis=1)
+    err_right0 = np.linalg.norm(proj_right0 - obs_right0, axis=1)
+    err_left1 = np.linalg.norm(proj_left1 - obs_left1, axis=1)
+    err_right1 = np.linalg.norm(proj_right1 - obs_right1, axis=1)
 
-        errors = [
+    supporter_mask = (
+        (err_left0 < threshold) &
+        (err_right0 < threshold) &
+        (err_left1 < threshold) &
+        (err_right1 < threshold)
+    )
 
-            np.linalg.norm(proj_left0 - corr['obs_left0']),
-            np.linalg.norm(proj_right0 - corr['obs_right0']),
-            np.linalg.norm(proj_left1 - corr['obs_left1']),
-            np.linalg.norm(proj_right1 - corr['obs_right1']),
-        ]
+    inliers = [
+        c for c, is_inlier in zip(correspondences, supporter_mask)
+        if is_inlier
+    ]
 
-        if all(e < threshold for e in errors):
-            inliers.append(corr)
-        else:
-            outliers.append(corr)
+    outliers = [
+        c for c, is_inlier in zip(correspondences, supporter_mask)
+        if not is_inlier
+    ]
 
     return inliers, outliers
+
+
 
 
 def draw_ransac_results(frame0_data,
