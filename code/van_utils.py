@@ -622,5 +622,132 @@ def plot_trajectory(est_positions, gt_positions):
     plt.axis('equal')
     plt.grid(True)
 
+def get_num_frames():
+    image_dir = DATA_PATH / 'image_0'
+    return len(list(image_dir.glob("*.png")))
+
 
 # --------------------------------------ex4---------------------------------------------------------
+
+def build_stereo_dict(frame_data):
+    return {
+        m.queryIdx: m
+        for m in frame_data["stereo_inliers"]
+    }
+
+
+def get_feature_observation(frame_data,
+                            feature_idx,
+                            stereo_dict):
+
+    if feature_idx not in stereo_dict:
+        return None
+
+    stereo_match = stereo_dict[feature_idx]
+
+    kp_left = frame_data["kp_left"][feature_idx]
+
+    kp_right = frame_data["kp_right"][
+        stereo_match.trainIdx
+    ]
+
+    return {
+        "x_left": kp_left.pt[0],
+        "x_right": kp_right.pt[0],
+        "y": kp_left.pt[1]
+    }
+
+
+def add_feature_to_db(db,
+                      frame_id,
+                      feature_idx,
+                      track_id,
+                      observation):
+
+    db.add_observation(
+        frame_id=frame_id,
+        feature_idx=feature_idx,
+        track_id=track_id,
+        x_left=observation["x_left"],
+        x_right=observation["x_right"],
+        y=observation["y"]
+    )
+
+
+def get_or_create_track(db,
+                        frame_id,
+                        feature_idx):
+
+    if db.has_feature(frame_id, feature_idx):
+
+        return db.get_track_of_feature(
+            frame_id,
+            feature_idx
+        )
+
+    return db.create_track()
+
+
+def compute_tracking_statistics(db):
+    """
+    4.2: Compute tracking statistics.
+    Trivial tracks of length 1 are ignored.
+    """
+
+    track_lengths = [
+        len(db.frames(track_id))
+        for track_id in db.track_to_frames
+        if len(db.frames(track_id)) > 1
+    ]
+
+    if len(track_lengths) == 0:
+        raise RuntimeError("No non-trivial tracks found.")
+
+    frame_link_counts = [
+        len(db.tracks(frame_id))
+        for frame_id in db.frame_to_tracks
+    ]
+
+    stats = {
+        "total_tracks": len(track_lengths),
+        "num_frames": db.frame_num(),
+        "mean_track_length": np.mean(track_lengths),
+        "max_track_length": np.max(track_lengths),
+        "min_track_length": np.min(track_lengths),
+        "mean_frame_links": np.mean(frame_link_counts),
+    }
+
+    return stats
+
+
+def print_tracking_statistics(stats):
+    print("\n--- Task 4.2: Tracking Statistics ---")
+    print(f"Total number of tracks: {stats['total_tracks']}")
+    print(f"Number of frames: {stats['num_frames']}")
+    print(f"Mean track length: {stats['mean_track_length']:.2f}")
+    print(f"Maximum track length: {stats['max_track_length']}")
+    print(f"Minimum track length: {stats['min_track_length']}")
+    print(f"Mean number of frame links: {stats['mean_frame_links']:.2f}")
+
+
+def debug_tracking_database(db, frame_id=10):
+    print("Frames:", db.frame_num())
+    print("Tracks:", db.track_num())
+
+    tracks_in_frame = db.tracks(frame_id)
+
+    print("Tracks in frame:", tracks_in_frame)
+
+    if len(tracks_in_frame) > 0:
+        track_id = tracks_in_frame[0]
+        print("Example track id:", track_id)
+        print("Frames of example track:", db.frames(track_id))
+
+    longest_track = max(
+        db.track_to_frames,
+        key=lambda t: len(db.frames(t))
+    )
+
+    print("Longest track id:", longest_track)
+    print("Length:", len(db.frames(longest_track)))
+    print("Frames:", db.frames(longest_track))

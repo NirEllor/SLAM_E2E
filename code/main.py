@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import random
 import van_utils as lib
 import numpy as np
+from tracking_database_custom import TrackingDB
 
 NUM_FRAMES = 3300
 
@@ -183,6 +184,16 @@ def run_single_pair(idx=0, display=False, plot_3d=True):
 
         lib.plot_3d_points(clean_points_3d, title=f"Frame {idx}: Final 3D Point Cloud")
 
+    des_left_inliers = np.array([
+        des1[m.queryIdx]
+        for m in inliers
+    ])
+
+    des_right_inliers = np.array([
+        des2[m.trainIdx]
+        for m in inliers
+    ])
+
     # Return everything so task 3 has full access to images, keypoints, and 3D data
     return {
         'img_left': img1,
@@ -191,6 +202,10 @@ def run_single_pair(idx=0, display=False, plot_3d=True):
         'kp_right': kp2,
         'des_left': des1,
         'des_right': des2,
+
+        'des_left_inliers': des_left_inliers,
+        'des_right_inliers': des_right_inliers,
+
         'stereo_inliers': inliers,
         'points_3d': points_3d
     }
@@ -736,10 +751,6 @@ def q3(idx=0):
         'trajectory_gt': gt_positions
     }
 
-def get_num_frames():
-    image_dir = lib.DATA_PATH / 'image_0'
-    return len(list(image_dir.glob("*.png")))
-
 def benchmark_tracking_configs(idx=0):
     configs = [
         ("ORB", 700, cv2.SOLVEPNP_EPNP),
@@ -790,10 +801,104 @@ def benchmark_tracking_configs(idx=0):
 #--------------------------------------ex4---------------------------------------------------------
 
 
+
+def q4_1(num_frames=50):
+
+    db = TrackingDB()
+
+    prev_data = run_single_pair(
+        idx=0,
+        display=False,
+        plot_3d=False
+    )
+
+    for idx in range(1, num_frames):
+
+        print(f"Frame {idx}")
+
+        curr_data = run_single_pair(
+            idx=idx,
+            display=False,
+            plot_3d=False
+        )
+
+        temporal_matches = q3_2(
+            prev_data,
+            curr_data,
+            draw=False
+        )
+
+        prev_stereo = lib.build_stereo_dict(prev_data)
+        curr_stereo = lib.build_stereo_dict(curr_data)
+
+        for match in temporal_matches:
+
+            prev_feature = match.queryIdx
+            curr_feature = match.trainIdx
+
+            prev_obs = lib.get_feature_observation(
+                prev_data,
+                prev_feature,
+                prev_stereo
+            )
+
+            curr_obs = lib.get_feature_observation(
+                curr_data,
+                curr_feature,
+                curr_stereo
+            )
+
+            if prev_obs is None or curr_obs is None:
+                continue
+
+            if db.has_feature(idx - 1, prev_feature):
+
+                track_id = db.get_track_of_feature(
+                    idx - 1,
+                    prev_feature
+                )
+
+            else:
+
+                track_id = db.create_track()
+
+                lib.add_feature_to_db(
+                    db,
+                    idx - 1,
+                    prev_feature,
+                    track_id,
+                    prev_obs
+                )
+
+            lib.add_feature_to_db(
+                db,
+                idx,
+                curr_feature,
+                track_id,
+                curr_obs
+            )
+
+        prev_data = curr_data
+
+    return db
+
+def q4_2():
+    db = q4_1(50)
+    stats = lib.compute_tracking_statistics(db)
+    lib.print_tracking_statistics(stats)
+    return db
+
+
+
 def main():
-    q3_6(num_frames=get_num_frames())
-    plt.savefig("plot.png")
-    plt.show()
+    # q3_6(num_frames=lib.get_num_frames())
+    # plt.savefig("plot.png")
+    # plt.show()
+
+    db = q4_2()
+
+    # Optional debug
+    # debug_tracking_database(db, frame_id=10)
 
 if __name__ == '__main__':
     main()
