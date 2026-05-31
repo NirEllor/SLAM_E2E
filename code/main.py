@@ -961,18 +961,93 @@ def q4_6(db):
         min_length=2
     )
 
+
+def q4_7(db):
+    print("\n--- Task 4.7: Reprojection Error Analysis ---")
+    
+    # 1. Pick a random track with length >= 10
+    long_tracks = [t_id for t_id in db.track_to_frames if len(db.frames(t_id)) >= 10]
+    if not long_tracks:
+        raise RuntimeError("No track found with length >= 10. Try running with more frames.")
+    
+    track_id = random.choice(long_tracks)
+    frames = db.frames(track_id)
+    print(f"Selected Track ID: {track_id} | Length: {len(frames)} | Frames: {frames}")
+    
+    # 2. Read camera intrinsics and ground truth poses
+    K, m_left0, m_right0 = lib.read_cameras()
+    # Stereo baseline translation vector in left camera coordinates
+    t_stereo = np.linalg.inv(K) @ m_right0[:, 3]
+    gt_poses = lib.read_ground_truth_poses()
+    
+    # 3. Triangulate from the LAST frame of the track
+    last_frame_id = frames[-1]
+    obs_last = db.observation(last_frame_id, track_id)
+    
+    # Get ground truth matrices for the last frame
+    R_last, t_last = gt_poses[last_frame_id]
+    P_L_last = K @ np.hstack([R_last, t_last.reshape(3, 1)])
+    P_R_last = K @ np.hstack([R_last, (t_last.reshape(3) + t_stereo.reshape(3)).reshape(3, 1)])
+    
+    # Observed 2D coordinates in the last frame
+    p_left_last = np.array([obs_last.x_left, obs_last.y])
+    p_right_last = np.array([obs_last.x_right, obs_last.y])
+    
+    # Triangulate to get the 3D point in world coordinates
+    X_world = lib.triangulate_point_linear(p_left_last, p_right_last, P_L_last, P_R_last)
+    
+    # 4. Project back to all frames and calculate L2 reprojection errors
+    left_errors = []
+    right_errors = []
+    distances_from_reference = []  # Index relative to the reference frame or distance in frames
+    
+    for idx, frame_id in enumerate(frames):
+        obs = db.observation(frame_id, track_id)
+        R_curr, t_curr = gt_poses[frame_id]
+        
+        # Project world point to current frame cameras
+        proj_l, proj_r = lib.project_stereo_point(K, R_curr, t_curr, t_stereo, X_world)
+        
+        # Actual observations
+        obs_l = np.array([obs.x_left, obs.y])
+        obs_r = np.array([obs.x_right, obs.y])
+        
+        # Calculate L2 errors (Euclidean distance)
+        err_l = np.linalg.norm(proj_l - obs_l)
+        err_r = np.linalg.norm(proj_r - obs_r)
+        
+        left_errors.append(err_l)
+        right_errors.append(err_r)
+        
+        # Distance from reference frame (in terms of track steps, matching the PDF graph style)
+        # We can plot it from 0 to N where 0 is the starting point of our tracking error analysis
+        distances_from_reference.append(idx)
+        
+    # 5. Plot the reprojection error graph
+    plt.figure(figsize=(10, 6))
+    plt.plot(distances_from_reference, left_errors, label='Left', color='#2F4F4F', linewidth=2)
+    plt.plot(distances_from_reference, right_errors, label='Right', color='#FFA500', linewidth=2)
+    
+    plt.title("PnP - projection error vs track length")
+    plt.xlabel("distance from reference")
+    plt.ylabel("projection error (pixels)")
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.legend()
+    plt.tight_layout()
+
+
 def main():
     # q3_6(num_frames=NUM_FRAMES)
     # plt.savefig("plot.png")
 
     db = q4_1(lib.get_num_frames())
 
-    q4_2(db)
-    q4_3(db)
-    q4_4(db)
-    q4_5(db)
-    q4_6(db)
-
+    # q4_2(db)
+    # q4_3(db)
+    # q4_4(db)
+    # q4_5(db)
+    # q4_6(db)
+    q4_7(db)
     plt.show()
 
 if __name__ == '__main__':

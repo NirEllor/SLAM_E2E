@@ -951,3 +951,23 @@ def plot_track_length_histogram(db, min_length=2):
 
     plt.grid(True, axis="y")
     plt.tight_layout()
+
+
+
+def project_stereo_point(K, R, t, t_stereo, X):
+    """
+    Projects a 3D point X into both left and right cameras of a given frame pose.
+    X: shape (3,) in world coordinates
+    Returns: (u_l, v_l), (u_r, v_r)
+    """
+    # Projection matrix for left camera: P_L = K * [R | t]
+    P_left = K @ np.hstack([R, t.reshape(3, 1)])
+    
+    # Projection matrix for right camera: P_R = K * [R | t + t_stereo]
+    P_right = K @ np.hstack([R, (t.reshape(3) + t_stereo.reshape(3)).reshape(3, 1)])
+    
+    # Project using the existing project_point function
+    proj_l = project_point(P_left, X)
+    proj_r = project_point(P_right, X)
+    
+    return proj_l, proj_r
