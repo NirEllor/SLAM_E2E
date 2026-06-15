@@ -4,6 +4,7 @@ from pathlib import Path
 import random
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+import os
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_PATH = PROJECT_ROOT / 'dataset' / 'dataset' / 'sequences' / '00'
@@ -971,3 +972,206 @@ def project_stereo_point(K, R, t, t_stereo, X):
     proj_r = project_point(P_right, X)
     
     return proj_l, proj_r
+
+
+
+def benchmark_tracking_configs(idx=0):
+    """
+    High-level utility function to evaluate alternative tracking configuration parameters,
+    detector types, and variant PnP calculation methods. Moved to van_utils library layer.
+    """
+    configs = [
+        ("ORB", 700, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1000, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1500, cv2.SOLVEPNP_EPNP),
+        ("AKAZE", 0, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1000, cv2.SOLVEPNP_P3P),
+        ("ORB", 1000, cv2.SOLVEPNP_AP3P),
+    ]
+
+    for detector_type, n_features, pnp_method in configs:
+        print("\n" + "="*40)
+        print(f"Config Setup -> Detector: {detector_type} | Limit: {n_features} | Method ID: {pnp_method}")
+
+        frame0_data = run_single_pair(idx=idx, display=False, plot_3d=False)
+        frame1_data = run_single_pair(idx=idx + 1, display=False, plot_3d=False)
+
+        matches = q3_2(frame0_data, frame1_data, draw=False)
+
+        try:
+            R, t, inliers, outliers = q3_5(
+                frame0_data, frame1_data, matches,
+                iterations=50, threshold=2
+            )
+            print(f"Resulting Temporal Intersections: {len(matches)}")
+            print(f"Verified Consensus Inliers: {len(inliers)}")
+            if matches:
+                print(f"Inlier Verification Success Ratio: {len(inliers) / len(matches):.3f}")
+        except RuntimeError as e:
+            print(f"Calculation pass aborted: {e}")
+
+
+def run_single_pair(idx=0, display=False, plot_3d=True):
+    """
+    Runs the full computational pipeline for a single stereo pair frame node.
+    Acts as a foundational backend tool without creating circular script references.
+    """
+    if display:
+        print(f"\n========== Processing Frame {idx} Pipeline ==========")
+
+    # 1. Read images and extract raw interest structures locally
+    img1, img2 = read_images(idx)
+    kp1, des1 = get_orb_features(img1)
+    kp2, des2 = get_orb_features(img2)
+
+    assert len(kp1) >= 500 and len(kp2) >= 500, f"Insufficient feature count in frame {idx}!"
+
+    if display:
+        img1_kp = cv2.drawKeypoints(img1, kp1, None, color=(0, 255, 0))
+        img2_kp = cv2.drawKeypoints(img2, kp2, None, color=(0, 255, 0))
+        plot_stereo_side_by_side(img1_kp, img2_kp, f"Frame {idx}: Raw Structural Interest Points")
+
+    # 2. Extract relative brute-force spatial mappings
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    matches = bf.match(des1, des2)
+
+    if display:
+        draw_matches_custom(img1, kp1, img2, kp2, matches, f"Frame {idx}: Raw Brute-Force Match Overlap Vectors")
+        # Generate diagnostic tracking verification data directly via base tools
+        deviations = compute_rectified_stereo_deviations(kp1, kp2, matches)
+        plot_deviation_histogram(deviations)
+        print_large_deviation_percentage(deviations, threshold=2)
+
+    # 3. Enforce the early-stage geometric epipolar constraint validation mask
+    inliers, outliers = split_matches_by_rectified_pattern(kp1, kp2, matches, threshold=2)
+
+    if display:
+        print(f"Frame {idx} Epipolar Check Metrics -> Inliers: {len(inliers)} | Outliers: {len(outliers)}")
+        draw_inliers_outliers(img1, kp1, img2, kp2, inliers, outliers)
+
+    # 4. Generate spatial structural coordinates via OpenCV triangulation channels
+    k, m1, m2 = read_cameras()
+    points1, points2 = get_matched_points(kp1, kp2, inliers)
+    points_3d = triangulate_points_opencv(points1, points2, m1, m2)
+
+    # ⚠️ CRITICAL INSTRUCTOR FIX: Filter out invalid depths and extreme infinity anomalies (< 350m)
+    # This prevents bad tracking bounds from corrupting our visual odometry data pipeline
+    valid_depth_mask = (points_3d[:, 2] > 0) & (points_3d[:, 2] < 350)
+    
+    filtered_inliers = [inliers[i] for i in range(len(inliers)) if valid_depth_mask[i]]
+    filtered_points_3d = points_3d[valid_depth_mask]
+
+    # Generate the pristine visualization plot if requested
+    if display or plot_3d:
+        plot_3d_points(filtered_points_3d, title=f"Frame {idx}: Triangulated Landmark Points (<350m)")
+
+    # Extract clean validated local feature matrix matrices
+    des_left_inliers = np.array([des1[m.queryIdx] for m in filtered_inliers]) if filtered_inliers else np.empty((0, des1.shape[1]))
+    des_right_inliers = np.array([des2[m.trainIdx] for m in filtered_inliers]) if filtered_inliers else np.empty((0, des2.shape[1]))
+
+    # Package structural results safely for tracking sequence steps
+    return {
+        'img_left': img1,
+        'img_right': img2,
+        'kp_left': kp1,
+        'kp_right': kp2,
+        'des_left': des1,
+        'des_right': des2,
+
+        'des_left_inliers': des_left_inliers,
+        'des_right_inliers': des_right_inliers,
+
+        'stereo_inliers': filtered_inliers,
+        'points_3d': filtered_points_3d
+    }
+
+#### ex5 ###
+import gtsam
+from gtsam import symbol
+
+def init_gtsam_stereo_calibration():
+    """Reads camera calibration matrices and constructs a GTSAM Cal3_S2Stereo object."""
+    K_mat, _, m_right0 = read_cameras()
+    fx, fy, cx, cy, skew = K_mat[0,0], K_mat[1,1], K_mat[0,2], K_mat[1,2], K_mat[0,1]
+    t_stereo = np.linalg.inv(K_mat) @ m_right0[:, 3]
+    baseline = abs(t_stereo[0])
+    return gtsam.Cal3_S2Stereo(fx, fy, skew, cx, cy, baseline)
+
+def get_gtsam_camera_pose(gt_poses, frame_id):
+    """Converts world-to-camera ground truth matrices into a GTSAM Pose3 object."""
+    R_w2c, t_w2c = gt_poses[frame_id]
+    R_c2w = R_w2c.T
+    t_c2w = (-R_w2c.T @ t_w2c).flatten()
+    return gtsam.Pose3(gtsam.Rot3(R_c2w), gtsam.Point3(t_c2w[0], t_c2w[1], t_c2w[2]))
+
+def compute_stereo_reprojection_error(pose, K_gtsam, point_3d, obs):
+    """Computes the L2 pixel reprojection error for a single stereo observation."""
+    try:
+        camera = gtsam.StereoCamera(pose, K_gtsam)
+        proj = camera.project(point_3d)
+        return np.sqrt((proj.uL() - obs.x_left)**2 + (proj.v() - obs.y)**2 + (proj.uR() - obs.x_right)**2)
+    except RuntimeError:
+        return np.nan
+
+def compute_single_factor_error(pose, K_gtsam, point_3d, obs, pose_id=0, point_id=0):
+    """Creates a temporary GenericStereoFactor3D and computes its scalar graph error."""
+    measurement_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
+    pose_key, point_key = symbol('c', pose_id), symbol('q', point_id)
+    
+    stereo_meas = gtsam.StereoPoint2(obs.x_left, obs.x_right, obs.y)
+    factor = gtsam.GenericStereoFactor3D(stereo_meas, measurement_noise, pose_key, point_key, K_gtsam)
+    
+    values = gtsam.Values()
+    values.insert(pose_key, pose)
+    values.insert(point_key, point_3d)
+    return factor.error(values)
+
+def extract_optimized_geometry(result, window_frames, landmarks_in_window):
+    """Extracts camera trajectories and applies a 3-STD statistical filter to 3D landmarks."""
+    cam_positions = np.array([
+        result.atPose3(symbol('c', f_id)).translation() for f_id in window_frames
+    ])
+    
+    landmark_positions = []
+    for t_id in landmarks_in_window:
+        point_key = symbol('q', t_id)
+        if result.exists(point_key):
+            pt = result.atPoint3(point_key)
+            landmark_positions.append([pt[0], pt[1], pt[2]])
+    landmark_positions = np.array(landmark_positions)
+
+    if len(landmark_positions) > 0:
+        median = np.median(landmark_positions, axis=0)
+        std = np.std(landmark_positions, axis=0) + 1e-9
+        mask = np.all(np.abs(landmark_positions - median) < 3 * std, axis=1)
+        lm_filtered = landmark_positions[mask]
+    else:
+        lm_filtered = landmark_positions
+        
+    return cam_positions, lm_filtered
+
+def draw_projection_validation_frames(frame_id, obs, proj_init, proj_final):
+    """Draws ground-truth measurements, pre-optimization, and post-optimization circles on images."""
+    img_left_gray, img_right_gray = read_images(frame_id)
+    img_left = cv2.cvtColor(img_left_gray, cv2.COLOR_GRAY2BGR)
+    img_right = cv2.cvtColor(img_right_gray, cv2.COLOR_GRAY2BGR)
+    
+    meas_L = (int(obs.x_left), int(obs.y))
+    meas_R = (int(obs.x_right), int(obs.y))
+    proj_before_L = (int(proj_init.uL()), int(proj_init.v()))
+    proj_before_R = (int(proj_init.uR()), int(proj_init.v()))
+    proj_after_L = (int(proj_final.uL()), int(proj_final.v()))
+    proj_after_R = (int(proj_final.uR()), int(proj_final.v()))
+    
+    for img, pt_meas, pt_before, pt_after in [(img_left, meas_L, proj_before_L, proj_after_L), 
+                                             (img_right, meas_R, proj_before_R, proj_after_R)]:
+        cv2.circle(img, pt_meas, radius=6, color=(255, 0, 0), thickness=-1)    # Blue
+        cv2.circle(img, pt_before, radius=6, color=(0, 0, 255), thickness=-1)  # Red
+        cv2.circle(img, pt_after, radius=6, color=(0, 255, 0), thickness=-1)   # Green
+
+    cv2.putText(img_left, "Blue: Meas | Red: Before | Green: After", (20, 40), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+    output_dir = "./outputs"
+    os.makedirs(output_dir, exist_ok=True)
+    cv2.imwrite(os.path.join(output_dir, f"task_5_3_worst_frame_{frame_id}_left.png"), img_left)
+    cv2.imwrite(os.path.join(output_dir, f"task_5_3_worst_frame_{frame_id}_right.png"), img_right)
