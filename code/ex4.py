@@ -13,71 +13,167 @@ NUM_FRAMES = lib.get_num_frames()
 def q4_1(num_frames=NUM_FRAMES):
     """
     4.1: Building the long-term tracking database.
-    Loops through the frames sequence to extract temporal match chains 
-    and store them safely inside the TrackingDB framework.
+    Also stores global PnP camera poses for Exercise 5.
+    Pose convention:
+        X_cam = R_global @ X_left0 + t_global
     """
+
     db = TrackingDB()
     inlier_percentages = []
 
-    # Initialize frame 0 features using the pure library pipeline loader
-    prev_data = lib.run_single_pair(idx=0, display=False, plot_3d=False)
+    # Global pose of frame 0 in left0 coordinates
+    R_global = np.eye(3)
+    t_global = np.zeros((3, 1))
 
-    # Re-initialize the brute-force matcher locally to avoid calling q3_2
+    camera_poses = [(R_global.copy(), t_global.copy())]
+
+    prev_data = lib.run_single_pair(
+        idx=0,
+        display=False,
+        plot_3d=False
+    )
+
     bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
 
     for idx in range(1, num_frames):
         print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1}")
 
-        curr_data = lib.run_single_pair(idx=idx, display=False, plot_3d=False)
-        
-        # Pure matching logic replacing the old q3_2 dependency
-        knn_matches = bf_matcher.knnMatch(prev_data['des_left'], curr_data['des_left'], k=2)
-        temporal_matches = [m for m, n in knn_matches if m.distance < 0.7 * n.distance]
+        curr_data = lib.run_single_pair(
+            idx=idx,
+            display=False,
+            plot_3d=False
+        )
+
+        knn_matches = bf_matcher.knnMatch(
+            prev_data["des_left"],
+            curr_data["des_left"],
+            k=2
+        )
+
+        temporal_matches = [
+            m for m, n in knn_matches
+            if m.distance < 0.7 * n.distance
+        ]
 
         try:
-            # Build correspondences array directly using library utilities
-            correspondences = lib.build_pnp_correspondences(prev_data, curr_data, temporal_matches)
-            
-            if len(correspondences) < 4:
-                raise RuntimeError("Not enough tracking intersections for RANSAC initialization.")
-            
-            # Pure RANSAC iteration block replacing the old q3_5 dependency
-            best_inliers = []
-            k_matrix, _, _ = lib.read_cameras()
-            
-            for _ in range(50):  # 50 iterations
-                sample = random.sample(correspondences, 4)
-                obj_pts = np.array([c['X'] for c in sample], dtype=np.float32)
-                img_pts = np.array([c['obs_left1'] for c in sample], dtype=np.float32)
-                
-                success, rvec, tvec = cv2.solvePnP(obj_pts, img_pts, k_matrix, None, flags=cv2.SOLVEPNP_EPNP)
-                if success:
-                    R_candidate, _ = cv2.Rodrigues(rvec)
-                    inliers, _ = lib.evaluate_supporters(correspondences, prev_data, curr_data, R_candidate, tvec, threshold=2)
-                    if len(inliers) > len(best_inliers):
-                        best_inliers = inliers
+            correspondences = lib.build_pnp_correspondences(
+                prev_data,
+                curr_data,
+                temporal_matches
+            )
 
-            total = len(temporal_matches)
+            if len(correspondences) < 4:
+                raise RuntimeError("Not enough correspondences for PnP-RANSAC.")
+
+            best_inliers = []
+            best_outliers = []
+            best_R = None
+            best_t = None
+
+            k_matrix, _, _ = lib.read_cameras()
+
+            no_improvement = 0
+            max_no_improvement = 12
+
+            for _ in range(50):
+                sample = random.sample(correspondences, 4)
+
+                obj_pts = np.array(
+                    [c["X"] for c in sample],
+                    dtype=np.float32
+                )
+
+                img_pts = np.array(
+                    [c["obs_left1"] for c in sample],
+                    dtype=np.float32
+                )
+
+                success, rvec, tvec = cv2.solvePnP(
+                    obj_pts,
+                    img_pts,
+                    k_matrix,
+                    None,
+                    flags=cv2.SOLVEPNP_EPNP
+                )
+
+                if not success:
+                    no_improvement += 1
+                    continue
+
+                R_candidate, _ = cv2.Rodrigues(rvec)
+
+                inliers, outliers = lib.evaluate_supporters(
+                    correspondences,
+                    prev_data,
+                    curr_data,
+                    R_candidate,
+                    tvec,
+                    threshold=2
+                )
+
+                if len(inliers) > len(best_inliers):
+                    best_inliers = inliers
+                    best_outliers = outliers
+                    best_R = R_candidate
+                    best_t = tvec
+                    no_improvement = 0
+                else:
+                    no_improvement += 1
+
+                if no_improvement >= max_no_improvement:
+                    break
+
+            if best_R is None:
+                raise RuntimeError("RANSAC failed to find a valid pose.")
+
+            total = len(best_inliers) + len(best_outliers)
+
             if total > 0:
-                inlier_percentages.append(100.0 * len(best_inliers) / total)
+                inlier_percentages.append(
+                    100.0 * len(best_inliers) / total
+                )
             else:
                 inlier_percentages.append(0.0)
 
+            # Compose global pose:
+            # X_curr = R_rel X_prev + t_rel
+            R_global, t_global = lib.compose_transform(
+                R_global,
+                t_global,
+                best_R,
+                best_t
+            )
+
         except RuntimeError as e:
-            print(f"PnP-RANSAC motion calculation failure at frame link {idx - 1}->{idx}: {e}")
+            print(f"PnP-RANSAC failure at frame link {idx - 1}->{idx}: {e}")
             inlier_percentages.append(0.0)
 
-        # Map current descriptor structures out for database insertion
+            # If pose estimation fails, keep previous pose
+            R_global = R_global.copy()
+            t_global = t_global.copy()
+
+        camera_poses.append(
+            (R_global.copy(), t_global.copy())
+        )
+
         prev_stereo = lib.build_stereo_dict(prev_data)
         curr_stereo = lib.build_stereo_dict(curr_data)
 
-        # Ingest active tracked structures directly via encapsulated DB handles
-        db.update_tracks(idx, temporal_matches, prev_stereo, curr_stereo, prev_data, curr_data)
+        db.update_tracks(
+            idx,
+            temporal_matches,
+            prev_stereo,
+            curr_stereo,
+            prev_data,
+            curr_data
+        )
+
         prev_data = curr_data
 
     db.inlier_percentages = inlier_percentages
-    return db
+    db.camera_poses = camera_poses
 
+    return db
 
 def q4_2(db):
     """

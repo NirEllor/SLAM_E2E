@@ -4,8 +4,6 @@ from gtsam import symbol
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-import cv2
-import ex4 
 import os
 import van_utils as lib
 from gtsam.utils import plot as gtsam_plot
@@ -13,6 +11,9 @@ from ex4 import q4_1
 
 output_dir = "./outputs"
 os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it doesn't exist
+
+NUM_FRAMES = lib.get_num_frames()
+
 
 def q5_1(db):
     print("\n--- Task 5.1: Single Track Error Analysis with GTSAM ---")
@@ -24,10 +25,13 @@ def q5_1(db):
     frames = db.frames(track_id)
     
     K_gtsam = lib.init_gtsam_stereo_calibration()
-    gt_poses = lib.read_ground_truth_poses()
-    
-    # Generate camera poses mapping
-    poses_dict = {f_id: lib.get_gtsam_camera_pose(gt_poses, frame_id=f_id) for f_id in frames}
+    poses_dict = {
+        f_id: lib.pnp_pose_to_gtsam_pose(
+            db.camera_poses[f_id][0],
+            db.camera_poses[f_id][1]
+        )
+        for f_id in frames
+    }
     
     # Triangulate initial point configuration from last frame
     last_frame_id = frames[-1]
@@ -61,13 +65,15 @@ def q5_3(db):
     K_gtsam = lib.init_gtsam_stereo_calibration()
     K_mat, _, m_right0 = lib.read_cameras()
     t_stereo = np.linalg.inv(K_mat) @ m_right0[:, 3]
-    gt_poses = lib.read_ground_truth_poses()
-    
+    camera_poses = db.camera_poses
     # Keyframe selection logic bound to 2.5 meters
     kf_indices, accumulated_dist = [0], 0.0
     for idx in range(1, db.frame_num()):
-        p_prev = (-gt_poses[idx-1][0].T @ gt_poses[idx-1][1]).flatten()
-        p_curr = (-gt_poses[idx][0].T @ gt_poses[idx][1]).flatten()
+        R_prev, t_prev = camera_poses[idx - 1]
+        R_curr, t_curr = camera_poses[idx]
+
+        p_prev = lib.camera_center(R_prev, t_prev)
+        p_curr = lib.camera_center(R_curr, t_curr)
         accumulated_dist += np.linalg.norm(p_curr - p_prev)
         if accumulated_dist >= 2.5:
             kf_indices.append(idx); break
@@ -84,12 +90,20 @@ def q5_3(db):
         
     graph = gtsam.NonlinearFactorGraph()
     initial_estimate = gtsam.Values()
-    measurement_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
-    
+    base_noise = gtsam.noiseModel.Isotropic.Sigma(
+        3,
+        1.0
+    )
+
+    measurement_noise = gtsam.noiseModel.Robust.Create(
+        gtsam.noiseModel.mEstimator.Huber.Create(2.0),
+        base_noise
+    )
     # Add Camera Poses Initial values
     for f_id in window_frames:
         pose_key = symbol('c', f_id)
-        pose_initial = lib.get_gtsam_camera_pose(gt_poses, f_id)
+        R_init, t_init = camera_poses[f_id]
+        pose_initial = lib.pnp_pose_to_gtsam_pose(R_init, t_init)
         initial_estimate.insert(pose_key, pose_initial)
         if f_id == start_frame:
             graph.add(gtsam.PriorFactorPose3(pose_key, pose_initial, gtsam.noiseModel.Diagonal.Sigmas(np.ones(6)*1e-6)))
@@ -102,9 +116,17 @@ def q5_3(db):
             
         init_f_id = track_frames[0]
         obs_init = db.observation(init_f_id, t_id)
-        R_w2c, t_w2c = gt_poses[init_f_id]
-        P_L = K_mat @ np.hstack([R_w2c.T, (-R_w2c.T @ t_w2c).reshape(3,1)])
-        P_R = K_mat @ np.hstack([R_w2c.T, (-R_w2c.T @ t_w2c).reshape(3,1) + R_w2c.T @ t_stereo.reshape(3,1)])
+        R_w2c, t_w2c = camera_poses[init_f_id]
+
+        P_L = K_mat @ np.hstack([
+            R_w2c,
+            t_w2c.reshape(3, 1)
+        ])
+
+        P_R = K_mat @ np.hstack([
+            R_w2c,
+            (t_w2c.reshape(3, 1) + R_w2c @ t_stereo.reshape(3, 1))
+        ])
         
         X_init = lib.triangulate_point_linear(np.array([obs_init.x_left, obs_init.y]), np.array([obs_init.x_right, obs_init.y]), P_L, P_R)
         initial_estimate.insert(point_key, gtsam.Point3(X_init[0], X_init[1], X_init[2]))
@@ -192,9 +214,248 @@ def q5_3(db):
     print("[Success] Fully optimized visual validation assets saved.")
 
 
+def plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global):
+    gt_poses = lib.read_ground_truth_poses()
+
+    estimated_positions = []
+    gt_positions = []
+
+    valid_keyframes = [
+        kf for kf in keyframes
+        if kf in global_keyframe_poses
+    ]
+
+    for kf in valid_keyframes:
+        est_pose = global_keyframe_poses[kf]
+        estimated_positions.append(
+            lib.pose_translation_np(est_pose)
+        )
+
+        R_gt, t_gt = gt_poses[kf]
+        gt_positions.append(
+            lib.camera_center(R_gt, t_gt)
+        )
+
+    estimated_positions = np.array(estimated_positions)
+    gt_positions = np.array(gt_positions)
+
+    points = np.array(all_points_global)
+
+    plt.figure(figsize=(10, 8))
+
+    if len(points) > 0:
+        plt.scatter(
+            points[:, 0],
+            points[:, 2],
+            s=1,
+            alpha=0.2,
+            label="Optimized 3D points"
+        )
+
+    plt.plot(
+        estimated_positions[:, 0],
+        estimated_positions[:, 2],
+        "bo-",
+        markersize=3,
+        label="Optimized keyframes"
+    )
+
+    plt.plot(
+        gt_positions[:, 0],
+        gt_positions[:, 2],
+        "r--",
+        linewidth=2,
+        label="Ground truth keyframes"
+    )
+
+    plt.title("5.4: Optimized Keyframe Trajectory vs Ground Truth")
+    plt.xlabel("X")
+    plt.ylabel("Z")
+    plt.axis("equal")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+
+    output_path = os.path.join(
+        output_dir,
+        "task_5_4_keyframes_vs_gt.png"
+    )
+
+    plt.savefig(output_path, dpi=200)
+
+
+def plot_keyframe_localization_error(keyframes, global_keyframe_poses):
+    gt_poses = lib.read_ground_truth_poses()
+
+    errors = []
+    valid_keyframes = []
+
+    print("\n[Debug localization comparison]")
+
+    for kf in keyframes[:10]:
+        if kf not in global_keyframe_poses:
+            continue
+
+        est_pos = lib.pose_translation_np(global_keyframe_poses[kf])
+
+        R_gt, t_gt = gt_poses[kf]
+        gt_pos_direct = t_gt.flatten()
+        gt_pos_center = lib.camera_center(R_gt, t_gt)
+
+        # print(f"KF {kf}")
+        # print(f"  est_pos:       {est_pos}")
+        # print(f"  gt_pos_direct: {gt_pos_direct}")
+        # print(f"  gt_pos_center: {gt_pos_center}")
+        # print(f"  err_direct:    {np.linalg.norm(est_pos - gt_pos_direct):.3f}")
+        # print(f"  err_center:    {np.linalg.norm(est_pos - gt_pos_center):.3f}")
+
+    for kf in keyframes:
+
+        if kf not in global_keyframe_poses:
+            continue
+
+        est_pos = lib.pose_translation_np(
+            global_keyframe_poses[kf]
+        )
+
+        R_gt, t_gt = gt_poses[kf]
+        gt_pos = lib.camera_center(R_gt, t_gt)
+        err = np.linalg.norm(est_pos - gt_pos)
+
+        errors.append(err)
+        valid_keyframes.append(kf)
+
+    plt.figure(figsize=(12, 5))
+
+    plt.plot(
+        valid_keyframes,
+        errors,
+        marker="o",
+        linewidth=1
+    )
+
+    plt.title("5.4: Keyframe Localization Error")
+    plt.xlabel("Frame")
+    plt.ylabel("Localization Error [m]")
+    plt.grid(True)
+    plt.tight_layout()
+
+    output_path = os.path.join(
+        output_dir,
+        "task_5_4_keyframe_error.png"
+    )
+
+    plt.savefig(output_path, dpi=200)
+
+    print(
+        f"Mean keyframe localization error: {np.mean(errors):.3f} m"
+    )
+    print(
+        f"Max keyframe localization error: {np.max(errors):.3f} m"
+    )
+
+def q5_4(db):
+    print("\n================================================================================")
+    print("SECTION 5.4: FULL SLIDING BUNDLE ADJUSTMENT")
+    print("================================================================================")
+
+    keyframes = lib.choose_keyframes(
+        db,
+        distance_threshold=2.5,
+        min_gap=5,
+        max_gap=20
+    )
+
+    bundle_windows = [
+        (keyframes[i], keyframes[i + 1])
+        for i in range(len(keyframes) - 1)
+    ]
+
+    print(f"Number of keyframes: {len(keyframes)}")
+    print(f"Number of bundle windows: {len(bundle_windows)}")
+
+    # Global optimized keyframe poses in frame0 coordinates
+    global_keyframe_poses = {
+        keyframes[0]: gtsam.Pose3()
+    }
+
+    all_points_global = []
+    last_bundle_result = None
+    failed_bundles = 0
+    for start_frame, end_frame in bundle_windows:
+        if start_frame not in global_keyframe_poses:
+            continue
+        try:
+            bundle_result = lib.solve_bundle_window(
+                db,
+                start_frame,
+                end_frame
+            )
+        except Exception as e:
+            print(type(e))
+            print(repr(e))
+            print(f"[Warning] Bundle {start_frame}->{end_frame} failed: {e}")
+            failed_bundles += 1
+
+            if start_frame in global_keyframe_poses:
+                global_keyframe_poses[end_frame] = global_keyframe_poses[start_frame]
+            continue
+
+        last_bundle_result = bundle_result
+
+        start_global_pose = global_keyframe_poses[start_frame]
+        relative_pose = bundle_result["relative_pose"]
+
+        rel_t = lib.pose_translation_np(relative_pose)
+        start_t = lib.pose_translation_np(start_global_pose)
+        end_global_pose = start_global_pose.compose(relative_pose)
+        end_t = lib.pose_translation_np(end_global_pose)
+
+
+
+        global_keyframe_poses[end_frame] = end_global_pose
+
+        # Transform local landmarks to global frame0 coordinates
+        points_local = bundle_result["optimized_points_local"]
+
+        if len(points_local) > 0:
+            for p_local in points_local:
+                p_global = start_global_pose.transformFrom(
+                    gtsam.Point3(*p_local)
+                )
+                all_points_global.append(
+                    np.array(p_global).reshape(3)
+                )
+
+    print(f"Failed bundles: {failed_bundles}/{len(bundle_windows)}")
+    if last_bundle_result is None:
+        raise RuntimeError("No bundle window was successfully optimized.")
+
+    # -------------------------
+    # Last bundle diagnostics
+    # -------------------------
+
+
+    # -------------------------
+    # Plotting
+    # -------------------------
+    plot_q5_4_results(
+        keyframes,
+        global_keyframe_poses,
+        all_points_global
+    )
+
+    plot_keyframe_localization_error(
+        keyframes,
+        global_keyframe_poses
+    )
+
+    return global_keyframe_poses, all_points_global
 
 if __name__ == '__main__':
-    print("Building/Loading Tracking DB from Ex4...")
-    db = q4_1(num_frames=20)
-    q5_1(db)
-    q5_3(db)
+    import pickle
+
+    with open("tracking_db.pkl", "rb") as f:
+        db = pickle.load(f)
+
+    q5_4(db)
