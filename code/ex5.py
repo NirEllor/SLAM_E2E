@@ -59,29 +59,21 @@ def q5_1(db):
 
 def q5_3(db):
     print("\n================================================================================")
-    print("SECTION 5.3: FIRST BUNDLE ADJUSTMENT WINDOW")
+    print("SECTION 5.3: FIRST BUNDLE ADJUSTMENT WINDOW (8 FRAMES)")
     print("================================================================================")
     
     K_gtsam = lib.init_gtsam_stereo_calibration()
     K_mat, _, m_right0 = lib.read_cameras()
     t_stereo = np.linalg.inv(K_mat) @ m_right0[:, 3]
     camera_poses = db.camera_poses
-    # Keyframe selection logic bound to 2.5 meters
-    kf_indices, accumulated_dist = [0], 0.0
-    for idx in range(1, db.frame_num()):
-        R_prev, t_prev = camera_poses[idx - 1]
-        R_curr, t_curr = camera_poses[idx]
 
-        p_prev = lib.camera_center(R_prev, t_prev)
-        p_curr = lib.camera_center(R_curr, t_curr)
-        accumulated_dist += np.linalg.norm(p_curr - p_prev)
-        if accumulated_dist >= 2.5:
-            kf_indices.append(idx); break
-            
-    start_frame, end_frame = kf_indices[0], kf_indices[1]
+    # Target exactly 8 frames for the local window optimization
+    TARGET_FRAMES_COUNT = 8
+    start_frame = 0
+    end_frame = start_frame + TARGET_FRAMES_COUNT - 1
     window_frames = list(range(start_frame, end_frame + 1))
     
-    print(f"Bundle Window 1 spans from Frame {start_frame} to Keyframe {end_frame} (Total {len(window_frames)} frames)")
+    print(f"Bundle Window spans from Frame {start_frame} to Frame {end_frame} (Total {len(window_frames)} frames)")
     
     landmarks_in_window = set()
     for f_id in window_frames: 
@@ -90,23 +82,27 @@ def q5_3(db):
         
     graph = gtsam.NonlinearFactorGraph()
     initial_estimate = gtsam.Values()
-    base_noise = gtsam.noiseModel.Isotropic.Sigma(
-        3,
-        1.0
-    )
+    base_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
 
     measurement_noise = gtsam.noiseModel.Robust.Create(
         gtsam.noiseModel.mEstimator.Huber.Create(2.0),
         base_noise
     )
-    # Add Camera Poses Initial values
+    
+    # Track the start pose matrix to convert everything into local coordinates
+    R_start, t_start = camera_poses[start_frame]
+
+    # Add Camera Poses Initial values (Transformed to local window frame)
     for f_id in window_frames:
         pose_key = symbol('c', f_id)
-        R_init, t_init = camera_poses[f_id]
-        pose_initial = lib.pnp_pose_to_gtsam_pose(R_init, t_init)
-        initial_estimate.insert(pose_key, pose_initial)
+        R_f, t_f = camera_poses[f_id]
+        
+        # Map extrinsics into local GTSAM coordinates
+        pose_local = lib.w2c_to_local_gtsam_pose(R_start, t_start, R_f, t_f)
+        initial_estimate.insert(pose_key, pose_local)
+        
         if f_id == start_frame:
-            graph.add(gtsam.PriorFactorPose3(pose_key, pose_initial, gtsam.noiseModel.Diagonal.Sigmas(np.ones(6)*1e-6)))
+            graph.add(gtsam.PriorFactorPose3(pose_key, pose_local, gtsam.noiseModel.Diagonal.Sigmas(np.ones(6)*1e-6)))
             
     # Triangulate Landmarks & Populate graph structures
     for t_id in landmarks_in_window:
@@ -114,22 +110,49 @@ def q5_3(db):
         track_frames = [f for f in db.frames(t_id) if f in window_frames]
         if not track_frames: continue
             
+        # Require at least 3 frames of support for this landmark inside the
+        # window. A landmark with only 1-2 stereo observations is poorly
+        # constrained and very sensitive to a single bad triangulation,
+        # which can destabilize the whole bundle (see PDF: "take care to
+        # avoid creating an ill-formed problem").
+        if len(track_frames) < 3: continue
+
         init_f_id = track_frames[0]
         obs_init = db.observation(init_f_id, t_id)
         R_w2c, t_w2c = camera_poses[init_f_id]
 
-        P_L = K_mat @ np.hstack([
-            R_w2c,
-            t_w2c.reshape(3, 1)
-        ])
+        # Skip points with degenerate/near-zero disparity: these blow up to
+        # huge or NaN/garbage depths under linear triangulation and corrupt
+        # the initial landmark estimate (and therefore the whole graph).
+        if not lib.valid_stereo_obs(obs_init, min_disp=1.0): continue
 
-        P_R = K_mat @ np.hstack([
-            R_w2c,
-            (t_w2c.reshape(3, 1) + R_w2c @ t_stereo.reshape(3, 1))
-        ])
+        P_L = K_mat @ np.hstack([R_w2c, t_w2c.reshape(3, 1)])
+        # t_stereo is already expressed in the LEFT camera's coordinate frame
+        # (it's the right camera's extrinsic translation relative to the left
+        # camera, i.e. K^-1 @ m_right0[:, 3]). The world-to-right-camera
+        # extrinsic translation is therefore a simple vector sum t_w2c + t_stereo
+        # (same convention used in evaluate_supporters / project_stereo_point in
+        # exercises 3/4). Do NOT rotate t_stereo by R_w2c here - that incorrectly
+        # treats t_stereo as if it were expressed in world coordinates, and
+        # introduces a frame-dependent (because R_w2c differs per frame) error
+        # in the stereo baseline used for triangulation, corrupting the 3D
+        # landmark positions and poisoning the whole bundle initialization.
+        P_R = K_mat @ np.hstack([R_w2c, (t_w2c.reshape(3, 1) + t_stereo.reshape(3, 1))])
         
-        X_init = lib.triangulate_point_linear(np.array([obs_init.x_left, obs_init.y]), np.array([obs_init.x_right, obs_init.y]), P_L, P_R)
-        initial_estimate.insert(point_key, gtsam.Point3(X_init[0], X_init[1], X_init[2]))
+        X_global = lib.triangulate_point_linear(np.array([obs_init.x_left, obs_init.y]), np.array([obs_init.x_right, obs_init.y]), P_L, P_R)
+        
+        if not np.all(np.isfinite(X_global)): continue
+ 
+        # Reject points triangulated behind the camera or absurdly far away
+        # (linear triangulation occasionally produces these from noisy
+        # matches even with valid disparity). Same bound used in 5.4's
+        # add_valid_tracks_to_graph for consistency.
+        if X_global[2] < 5 or X_global[2] > 60: continue
+            
+        pose_init_frame = initial_estimate.atPose3(symbol('c', init_f_id))
+        X_init_local = pose_init_frame.transformFrom(gtsam.Point3(float(X_global[0]), float(X_global[1]), float(X_global[2])))
+        
+        initial_estimate.insert(point_key, X_init_local)
         
         for f_id in track_frames:
             obs = db.observation(f_id, t_id)
@@ -141,78 +164,119 @@ def q5_3(db):
     initial_total_error = graph.error(initial_estimate)
     print(f"Total Factors in Graph: {num_factors}")
     print(f"Total Factor Graph Error BEFORE Optimization: {initial_total_error:.4f}")
-    print(f"Average Factor Error BEFORE Optimization: {initial_total_error / num_factors:.4f}")
-    
-    # Locate Worst Performing Structural Factor
-    max_err, worst_factor = -1, None
-    for idx in range(num_factors):
-        f = graph.at(idx)
-        if isinstance(f, gtsam.GenericStereoFactor3D) and f.error(initial_estimate) > max_err:
-            max_err = f.error(initial_estimate)
-            worst_factor = f
-                
-    worst_pose_key, worst_point_key = worst_factor.keys()[0], worst_factor.keys()[1]
-    
-    print(f"\nWorst Initial Factor Info:")
-    print(f"  Frame Key: {worst_pose_key} | Landmark Key: {worst_point_key}")
-    print(f"  Initial Factor Error: {max_err:.4f}")
-    
-    proj_init = gtsam.StereoCamera(initial_estimate.atPose3(worst_pose_key), K_gtsam).project(initial_estimate.atPoint3(worst_point_key))
-    meas_worst = worst_factor.measured()
-    
-    print(f"  Distance from measurements (Pixels) BEFORE:")
-    print(f"    Left Camera Dist: {np.sqrt((proj_init.uL() - meas_worst.uL())**2 + (proj_init.v() - meas_worst.v())**2):.2f}")
-    print(f"    Right Camera Dist: {np.sqrt((proj_init.uR() - meas_worst.uR())**2 + (proj_init.v() - meas_worst.v())**2):.2f}")
     
     # Optimization Sequence Execution
     print("\nRunning Levenberg-Marquardt Optimization...")
     result = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate).optimize()
     print("Optimization Complete!")
     
-    final_total_error = graph.error(result)
-    print(f"\nTotal Factor Graph Error AFTER Optimization: {final_total_error:.4f}")
-    print(f"Average Factor Error AFTER Optimization: {final_total_error / num_factors:.4f}")
-    
-    # Collect post-optimization projection validation anchors
-    proj_final = gtsam.StereoCamera(result.atPose3(worst_pose_key), K_gtsam).project(result.atPoint3(worst_point_key))
-    worst_frame_id = gtsam.symbolIndex(worst_pose_key)
-    worst_obs = db.observation(worst_frame_id, gtsam.symbolIndex(worst_point_key))
-    
-    print(f"\nWorst Factor Error AFTER Optimization: {worst_factor.error(result):.4f}")
-    print(f"  Distance from measurements (Pixels) AFTER:")
-    print(f"    Left Camera Dist: {np.sqrt((proj_final.uL() - meas_worst.uL())**2 + (proj_final.v() - meas_worst.v())**2):.2f}")
-    print(f"    Right Camera Dist: {np.sqrt((proj_final.uR() - meas_worst.uR())**2 + (proj_final.v() - meas_worst.v())**2):.2f}")
-    
-    # Trigger modular image visualizations
-    try: 
-        lib.draw_projection_validation_frames(worst_frame_id, worst_obs, proj_init, proj_final)
-    except Exception as e: 
-        print(f"[Warning] Imaging validation dropped: {e}")
-
+    # Extract clean local geometry configurations
     cam_positions, lm_filtered = lib.extract_optimized_geometry(result, window_frames, landmarks_in_window)
+    initial_cam_positions = np.array([initial_estimate.atPose3(symbol('c', f_id)).translation() for f_id in window_frames])
 
-    # 3D Path rendering setup
-    fig3d = plt.figure(figsize=(10, 7)); axes3d = fig3d.add_subplot(111, projection='3d')
-    axis_length = max(np.ptp(lm_filtered, axis=0).max() * 0.05, 0.5) if len(lm_filtered) > 0 else 0.5
-    for f_id in window_frames: 
-        gtsam_plot.plot_pose3_on_axes(axes3d, result.atPose3(symbol('c', f_id)), axis_length=axis_length)
-    if len(lm_filtered) > 0: 
-        axes3d.scatter(lm_filtered[:, 0], lm_filtered[:, 1], lm_filtered[:, 2], s=1, c='gray', alpha=0.3)
-    output_path = os.path.join(output_dir, "task_5_3_bundle1_3D.png")
-    plt.savefig(output_path, dpi=150); plt.close()
+    # -------------------------------------------------------------
+    # PLOTTING PASS
+    # -------------------------------------------------------------
+    
+    # 1. Plot 3D Optimized Trajectory (8 Poses Connected with Standard Axes)
+    fig3d = plt.figure(figsize=(8, 6))
+    ax3d = fig3d.add_subplot(111, projection='3d')
+    
+    xs_plot = cam_positions[:, 2]  
+    ys_plot = cam_positions[:, 0]  
+    zs_plot = -cam_positions[:, 1] 
 
-    # 2D Top-down plot rendering setup
-    fig2d, ax2d = plt.subplots(figsize=(10, 7))
-    if len(lm_filtered) > 0: 
-        ax2d.scatter(lm_filtered[:, 0], lm_filtered[:, 2], s=1, c='gray', alpha=0.4, label='Landmarks')
-    ax2d.plot(cam_positions[:, 0], cam_positions[:, 2], 'b-o', markersize=4, label='Camera Trajectory')
-    for f_idx, pos in [(start_frame, cam_positions[0]), (end_frame, cam_positions[-1])]: 
-        ax2d.scatter(pos[0], pos[2], s=80, c='red', zorder=5)
-    ax2d.set_aspect('equal'); ax2d.grid(True, alpha=0.3); ax2d.legend()
-    output_path = os.path.join(output_dir, "task_5_3_bundle1_2D.png")
-    plt.savefig(output_path, dpi=150); plt.close()
-    print("[Success] Fully optimized visual validation assets saved.")
+    # Draw connection baseline sequence for all 8 frames
+    ax3d.plot(xs_plot, ys_plot, zs_plot, 'k--', linewidth=1.5, zorder=1)
+    
+    axis_length = 0.25  
+    for i in range(len(window_frames)):
+        pose = result.atPose3(symbol('c', window_frames[i]))
+        R = pose.rotation().matrix()
+        cx, cy, cz = xs_plot[i], ys_plot[i], zs_plot[i]
+        
+        ax3d.scatter(cx, cy, cz, color='black', s=15, zorder=2)
+        
+        ax_right = R[:, 0]
+        ax_down = R[:, 1]
+        ax_forward = R[:, 2]
+        
+        # Red line: Right (X)
+        ax3d.plot([cx, cx + axis_length * ax_right[2]],
+                  [cy, cy + axis_length * ax_right[0]],
+                  [cz, cz - axis_length * ax_right[1]], color='r', linewidth=1.5)
+        
+        # Green line: Up (-Y)
+        ax3d.plot([cx, cx - axis_length * ax_down[2]],
+                  [cy, cy - axis_length * ax_down[0]],
+                  [cz, cz + axis_length * ax_down[1]], color='g', linewidth=1.5)
+                  
+        # Blue line: Forward (Z)
+        ax3d.plot([cx, cx + axis_length * ax_forward[2]],
+                  [cy, cy + axis_length * ax_forward[0]],
+                  [cz, cz - axis_length * ax_forward[1]], color='b', linewidth=1.5)
 
+    ax3d.set_title("Local Window Bundle Adjustment: 3D Optimized Trajectory\n", fontsize=11, fontweight='bold')
+    ax3d.set_xlabel("Z (Forward) [m]")
+    ax3d.set_ylabel("X (Right) [m]")
+    ax3d.set_zlabel("-Y (Up) [m]")
+    ax3d.set_xlim([0, 6])
+    ax3d.set_ylim([-2, 2])
+    ax3d.set_zlim([-2, 2])
+    ax3d.view_init(elev=14, azim=-72)
+    plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_3D.png"), dpi=200, bbox_inches='tight'); plt.close()
+
+    # 2. GTSAM Factor Graph State with Marginal Covariances (8-Frame State)
+    fig_cov = plt.figure(figsize=(8, 6))
+    ax_cov = fig_cov.add_subplot(111, projection='3d')
+    ax_cov.set_title("Plot Trajectory\nGTSAM Factor Graph State with Marginal Covariances\n", fontsize=11, fontweight='bold')
+    
+    try:
+        marginals = gtsam.Marginals(graph, result)
+        for f_id in window_frames:
+            pose_key = symbol('c', f_id)
+            pose = result.atPose3(pose_key)
+            cov = marginals.marginalCovariance(pose_key)
+            gtsam_plot.plot_pose3_on_axes(ax_cov, pose, axis_length=0.4, P=cov)
+    except Exception as e:
+        print(f"[Warning] Covariance layout fallback: {e}")
+        for f_id in window_frames:
+            pose = result.atPose3(symbol('c', f_id))
+            gtsam_plot.plot_pose3_on_axes(ax_cov, pose, axis_length=0.4)
+
+    ax_cov.set_xlabel("X axis")
+    ax_cov.set_ylabel("Y axis")
+    ax_cov.set_zlabel("Z axis")
+    ax_cov.view_init(elev=20, azim=-35)
+    plt.savefig(os.path.join(output_dir, "task_5_3_marginal_covariances.png"), dpi=200, bbox_inches='tight'); plt.close()
+
+    # 3. 2D Bird's-Eye View 
+    fig2d_full, ax2d_full = plt.subplots(figsize=(7, 7))
+    if len(lm_filtered) > 0:
+        ax2d_full.scatter(lm_filtered[:, 0], lm_filtered[:, 2], s=1, c='gray', alpha=0.4, label='Landmarks')
+    ax2d_full.plot(initial_cam_positions[:, 0], initial_cam_positions[:, 2], 'b-+', alpha=0.6, label='Initial (PnP)')
+    ax2d_full.plot(cam_positions[:, 0], cam_positions[:, 2], 'r-o', markersize=4, label='Optimized (BA)')
+    ax2d_full.set_title("Local Window Bundle Adjustment: 2D Bird's-Eye View Trajectory")
+    ax2d_full.set_xlabel("X Coordinate (East) [m]")
+    ax2d_full.set_ylabel("Z Coordinate (North) [m]")
+    ax2d_full.grid(True, alpha=0.3)
+    ax2d_full.legend()
+    plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_2D_full.png"), dpi=150); plt.close()
+
+    # 4. 2D Bird's-Eye View Zoomed Trajectory Focus 
+    fig2d_zoom, ax2d_zoom = plt.subplots(figsize=(6, 7))
+    ax2d_zoom.plot(initial_cam_positions[:, 0], initial_cam_positions[:, 2], 'b-o', alpha=0.5, markersize=4, label='Initial (PnP)')
+    ax2d_zoom.plot(cam_positions[:, 0], cam_positions[:, 2], 'r-o', markersize=4, label='Optimized (BA)')
+    ax2d_zoom.set_title("Local Window Bundle Adjustment: 2D Bird's-Eye View Trajectory\n(Trajectory zoomed)")
+    ax2d_zoom.set_xlabel("X Coordinate (East) [m]")
+    ax2d_zoom.set_ylabel("Z Coordinate (North) [m]")
+    ax2d_zoom.set_xlim([-2, 2])
+    ax2d_zoom.set_ylim([-2, 7])
+    ax2d_zoom.grid(True, alpha=0.3)
+    ax2d_zoom.legend()
+    plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_2D_zoomed.png"), dpi=150); plt.close()
+
+    print("[Success] Visual verification assets for exactly 8 frames successfully updated.")
 
 def plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global):
     gt_poses = lib.read_ground_truth_poses()
@@ -282,6 +346,7 @@ def plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global):
     )
 
     plt.savefig(output_path, dpi=200)
+
 
 
 def plot_keyframe_localization_error(keyframes, global_keyframe_poses):
@@ -455,7 +520,7 @@ def q5_4(db):
 if __name__ == '__main__':
     import pickle
 
-    with open("tracking_db.pkl", "rb") as f:
+    with open("code/tracking_db.pkl", "rb") as f:
         db = pickle.load(f)
 
-    q5_4(db)
+    q5_3(db)
