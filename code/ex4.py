@@ -136,7 +136,6 @@ def q4_1(num_frames=NUM_FRAMES):
                 inlier_percentages.append(0.0)
 
             # Compose global pose:
-            # X_curr = R_rel X_prev + t_rel
             R_global, t_global = lib.compose_transform(
                 R_global,
                 t_global,
@@ -147,26 +146,25 @@ def q4_1(num_frames=NUM_FRAMES):
         except RuntimeError as e:
             print(f"PnP-RANSAC failure at frame link {idx - 1}->{idx}: {e}")
             inlier_percentages.append(0.0)
-
-            # If pose estimation fails, keep previous pose
             R_global = R_global.copy()
             t_global = t_global.copy()
+            best_inliers = [] 
 
-        camera_poses.append(
-            (R_global.copy(), t_global.copy())
-        )
+        ransac_temporal_matches = [c['temporal_match'] for c in best_inliers]
 
         prev_stereo = lib.build_stereo_dict(prev_data)
         curr_stereo = lib.build_stereo_dict(curr_data)
 
         db.update_tracks(
             idx,
-            temporal_matches,
+            ransac_temporal_matches,
             prev_stereo,
             curr_stereo,
             prev_data,
             curr_data
         )
+
+        camera_poses.append((R_global.copy(), t_global.copy()))
 
         prev_data = curr_data
 

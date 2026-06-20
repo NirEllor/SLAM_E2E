@@ -5,10 +5,11 @@ import random
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 import os
+import gtsam
+from gtsam import symbol
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_PATH = PROJECT_ROOT / 'dataset' / 'dataset' / 'sequences' / '00'
-MIN_DISP = 5.0
 
 #--------------------------------------ex1---------------------------------------------------------
 def read_images(idx):
@@ -538,6 +539,7 @@ def plot_transformed_clouds(frame0_data,
     plt.axis('equal')
     plt.grid(True)
 
+import time
 
 
 def compose_transform(R1, t1, R2, t2):
@@ -1086,37 +1088,15 @@ def run_single_pair(idx=0, display=False, plot_3d=True):
     }
 
 #### ex5 ###
-import gtsam
-from gtsam import symbol
+
 
 def init_gtsam_stereo_calibration():
+    """Reads camera calibration matrices and constructs a GTSAM Cal3_S2Stereo object."""
     K_mat, _, m_right0 = read_cameras()
-
-    fx = float(K_mat[0, 0])
-    fy = float(K_mat[1, 1])
-    skew = float(K_mat[0, 1])
-    cx = float(K_mat[0, 2])
-    cy = float(K_mat[1, 2])
-
+    fx, fy, cx, cy, skew = K_mat[0,0], K_mat[1,1], K_mat[0,2], K_mat[1,2], K_mat[0,1]
     t_stereo = np.linalg.inv(K_mat) @ m_right0[:, 3]
-    baseline = abs(float(t_stereo[0]))
-
-    # print("[Debug GTSAM stereo calibration]")
-    # print("fx:", fx)
-    # print("fy:", fy)
-    # print("cx:", cx)
-    # print("cy:", cy)
-    # print("baseline:", baseline)
-
-    # GTSAM expects negative baseline for KITTI stereo
-    return gtsam.Cal3_S2Stereo(
-        fx,
-        fy,
-        skew,
-        cx,
-        cy,
-        baseline
-    )
+    baseline = abs(t_stereo[0])
+    return gtsam.Cal3_S2Stereo(fx, fy, skew, cx, cy, baseline)
 
 def get_gtsam_camera_pose(gt_poses, frame_id):
     """Converts world-to-camera ground truth matrices into a GTSAM Pose3 object."""
@@ -1198,603 +1178,39 @@ def draw_projection_validation_frames(frame_id, obs, proj_init, proj_final):
     cv2.imwrite(os.path.join(output_dir, f"task_5_3_worst_frame_{frame_id}_right.png"), img_right)
 
 
-def pnp_pose_to_gtsam_pose(R_w2c, t_w2c):
+
+
+
+def w2c_to_local_gtsam_pose(R_start, t_start, R_f, t_f):
     """
-    Convert PnP extrinsic pose X_cam = R_w2c X_world + t_w2c
-    into GTSAM Pose3, which maps camera coordinates -> world coordinates.
+    Transforms a world-to-camera (w2c) extrinsic pose into a local window coordinate system
+    where the start frame is the origin, and returns it as a gtsam.Pose3 object (c2w).
+    
+    Parameters:
+    - R_start, t_start: Extrinsics of the first frame in the bundle window (the local origin).
+    - R_f, t_f: Extrinsics of the current frame to transform.
     """
-    R_c2w = R_w2c.T
-    t_c2w = (-R_w2c.T @ t_w2c).reshape(3)
+    R_rel = R_f @ R_start.T
+    t_rel = t_f - R_f @ R_start.T @ t_start
+    R_gtsam = R_rel.T
+    t_gtsam = -R_rel.T @ t_rel
 
-    return gtsam.Pose3(
-        gtsam.Rot3(R_c2w),
-        gtsam.Point3(t_c2w[0], t_c2w[1], t_c2w[2])
-    )
+    gtsam_rot = gtsam.Rot3(R_gtsam)
+    gtsam_point = gtsam.Point3(float(t_gtsam[0]), float(t_gtsam[1]), float(t_gtsam[2]))
+    
+    return gtsam.Pose3(gtsam_rot, gtsam_point)
 
-def choose_keyframes(db, distance_threshold=2.5, max_gap=20, min_gap=5):
+
+
+def valid_stereo_obs(obs, min_disp=1.0):
     """
-    Choose keyframes along the trajectory using estimated PnP camera poses.
-
-    A new keyframe is selected when:
-    1. accumulated traveled distance >= distance_threshold
-    2. at least min_gap frames passed
-    3. or max_gap frames passed
+    Validates a stereo observation by checking if the disparity is positive
+    and above a minimal threshold, preventing degenerate triangulation.
+    
+    Parameters:
+    - obs: An observation object containing x_left and x_right attributes.
+    - min_disp: Minimum required disparity in pixels.
     """
-
-    keyframes = [0]
-    last_kf = 0
-    accumulated_dist = 0.0
-
-    for idx in range(1, db.frame_num()):
-        R_prev, t_prev = db.camera_poses[idx - 1]
-        R_curr, t_curr = db.camera_poses[idx]
-
-        p_prev = camera_center(R_prev, t_prev)
-        p_curr = camera_center(R_curr, t_curr)
-
-        step = np.linalg.norm(p_curr - p_prev)
-        accumulated_dist += step
-
-        frames_since_last_kf = idx - last_kf
-
-        if (
-            frames_since_last_kf >= min_gap
-            and accumulated_dist >= distance_threshold
-        ) or frames_since_last_kf >= max_gap:
-
-            keyframes.append(idx)
-            last_kf = idx
-            accumulated_dist = 0.0
-
-    if keyframes[-1] != db.frame_num() - 1:
-        keyframes.append(db.frame_num() - 1)
-
-    return keyframes
-
-def w2c_to_local_gtsam_pose(R_start, t_start, R_frame, t_frame):
-    """
-    db.camera_poses stores extrinsics:
-        X_cam = R @ X_global + t
-
-    We need GTSAM Pose3:
-        X_local = R_pose @ X_cam + t_pose
-
-    local coordinate system = first frame of the bundle.
-    """
-
-    R_local = R_start @ R_frame.T
-    t_local = t_start.reshape(3, 1) - R_local @ t_frame.reshape(3, 1)
-
-    return gtsam.Pose3(
-        gtsam.Rot3(R_local),
-        gtsam.Point3(*t_local.flatten())
-    )
-
-
-def pose_translation_np(pose):
-    return np.array(pose.translation()).reshape(3)
-
-
-def valid_stereo_obs(obs, min_disp=0.5):
-    if obs is None:
-        return False
-
-    vals = np.array([obs.x_left, obs.x_right, obs.y], dtype=float)
-
-    if not np.all(np.isfinite(vals)):
-        return False
-
     disparity = obs.x_left - obs.x_right
-
-    return disparity > min_disp
-
-
-def initialize_window_poses(db, window_frames, R_start, t_start, initial_estimate):
-    for f_id in window_frames:
-        R_f, t_f = db.camera_poses[f_id]
-
-        pose_local = w2c_to_local_gtsam_pose(
-            R_start,
-            t_start,
-            R_f,
-            t_f
-        )
-
-        initial_estimate.insert(symbol('c', f_id), pose_local)
-
-
-def build_track_factors(
-    db,
-    track_id,
-    track_frames,
-    point_key,
-    K_gtsam,
-    measurement_noise,
-    min_disp
-):
-    track_factors = []
-
-    for f_id in track_frames:
-        obs = db.observation(f_id, track_id)
-
-        if not valid_stereo_obs(obs, min_disp=min_disp):
-            continue
-
-        factor = gtsam.GenericStereoFactor3D(
-            gtsam.StereoPoint2(
-                float(obs.x_left),
-                float(obs.x_right),
-                float(obs.y)
-            ),
-            measurement_noise,
-            symbol('c', f_id),
-            point_key,
-            K_gtsam
-        )
-
-        track_factors.append(factor)
-
-    return track_factors
-
-
-def print_window_pose_norms(db, window_frames, start_frame, end_frame):
-    print(f"\nWindow {start_frame}->{end_frame}")
-
-    for f_id in window_frames:
-        _, t_f = db.camera_poses[f_id]
-        print(f"{f_id}: {np.linalg.norm(t_f):.2f}")
-
-
-def collect_candidate_tracks(db, window_frames):
-    candidate_tracks = set()
-
-    for f_id in window_frames:
-        candidate_tracks.update(db.tracks(f_id))
-
-    return sorted(candidate_tracks)
-
-
-def add_anchor_factor(graph, start_frame, anchor_noise):
-    start_key = symbol('c', start_frame)
-    anchor_pose = gtsam.Pose3()
-
-    anchor_factor = gtsam.PriorFactorPose3(
-        start_key,
-        anchor_pose,
-        anchor_noise
-    )
-
-    graph.add(anchor_factor)
-
-    return anchor_factor
-
-
-def triangulate_track_initial_point(db, track_id, init_frame, P_left0, P_right0):
-    obs_init = db.observation(init_frame, track_id)
-
-    p_left = np.array([obs_init.x_left, obs_init.y])
-    p_right = np.array([obs_init.x_right, obs_init.y])
-
-    return triangulate_point_linear(
-        p_left,
-        p_right,
-        P_left0,
-        P_right0
-    )
-
-
-def insert_landmark_initial_estimate(
-    initial_estimate,
-    point_key,
-    X_init,
-    init_frame
-):
-    pose_init_frame = initial_estimate.atPose3(symbol('c', init_frame))
-
-    X_init_local = pose_init_frame.transformFrom(
-        gtsam.Point3(
-            float(X_init[0]),
-            float(X_init[1]),
-            float(X_init[2])
-        )
-    )
-
-    initial_estimate.insert(point_key, X_init_local)
-
-    return X_init_local
-
-
-def add_valid_tracks_to_graph(
-    db,
-    candidate_tracks,
-    window_frames,
-    graph,
-    initial_estimate,
-    P_left0,
-    P_right0,
-    K_gtsam,
-    measurement_noise,
-    start_frame,
-    end_frame
-):
-    optimized_landmark_ids = []
-
-    for track_id in candidate_tracks:
-        track_frames = [
-            f for f in db.frames(track_id)
-            if f in window_frames
-        ]
-
-        if len(track_frames) < 3:
-            continue
-
-        init_frame = track_frames[0]
-        obs_init = db.observation(init_frame, track_id)
-
-        if not valid_stereo_obs(obs_init, min_disp=MIN_DISP):
-            continue
-
-        X_init = triangulate_track_initial_point(
-            db,
-            track_id,
-            init_frame,
-            P_left0,
-            P_right0
-        )
-
-        if not np.all(np.isfinite(X_init)):
-            continue
-
-        if X_init[2] < 5 or X_init[2] > 60:
-            continue
-
-        point_key = symbol('q', track_id)
-
-        track_factors = build_track_factors(
-            db,
-            track_id,
-            track_frames,
-            point_key,
-            K_gtsam,
-            measurement_noise,
-            MIN_DISP
-        )
-
-
-        if len(track_factors) < 3:
-            continue
-
-        insert_landmark_initial_estimate(
-            initial_estimate,
-            point_key,
-            X_init,
-            init_frame
-        )
-
-        optimized_landmark_ids.append(track_id)
-
-        for factor in track_factors:
-            graph.add(factor)
-
-    return optimized_landmark_ids
-
-
-def print_initial_landmark_stats(initial_estimate, optimized_landmark_ids):
-    init_landmark_norms = []
-
-    for track_id in optimized_landmark_ids:
-        point_key = symbol('q', track_id)
-
-        if initial_estimate.exists(point_key):
-            p = np.array(initial_estimate.atPoint3(point_key)).reshape(3)
-            init_landmark_norms.append(np.linalg.norm(p))
-
-    if len(init_landmark_norms) > 0:
-        print("[Debug initial landmarks]")
-        print("count:", len(init_landmark_norms))
-        print("min:", np.min(init_landmark_norms))
-        print("mean:", np.mean(init_landmark_norms))
-        print("max:", np.max(init_landmark_norms))
-
-
-def assert_graph_has_all_keys(graph, initial_estimate):
-    for i in range(graph.size()):
-        factor = graph.at(i)
-
-        for key in factor.keys():
-            if not initial_estimate.exists(key):
-                raise RuntimeError(
-                    f"Factor {i} uses missing key "
-                    f"{gtsam.DefaultKeyFormatter(key)}"
-                )
-
-
-def assert_all_poses_connected(graph, window_frames, start_frame, end_frame):
-    used_pose_frames = set()
-
-    for i in range(graph.size()):
-        factor = graph.at(i)
-
-        for key in factor.keys():
-            name = gtsam.DefaultKeyFormatter(key)
-
-            if name.startswith("c"):
-                used_pose_frames.add(int(name[1:]))
-
-    missing_pose_frames = [
-        f for f in window_frames
-        if f not in used_pose_frames
-    ]
-
-    if missing_pose_frames:
-        raise RuntimeError(
-            f"Disconnected poses in bundle {start_frame}->{end_frame}: "
-            f"{missing_pose_frames}"
-        )
-
-
-def print_graph_variables(initial_estimate, optimized_landmark_ids):
-    print("\n[VARIABLES IN VALUES]")
-    for k in initial_estimate.keys():
-        print(gtsam.DefaultKeyFormatter(k))
-
-    print("\n[LANDMARK IDS]")
-    for track_id in optimized_landmark_ids:
-        print(track_id)
-
-
-def optimize_graph(graph, initial_estimate):
-    params = gtsam.LevenbergMarquardtParams()
-    params.setVerbosity("ERROR")
-
-    optimizer = gtsam.LevenbergMarquardtOptimizer(
-        graph,
-        initial_estimate,
-        params
-    )
-
-    return optimizer.optimize()
-
-
-def print_selected_track_stats(db, optimized_landmark_ids, window_frames, start_frame, end_frame):
-    if not (start_frame == 20 and end_frame == 25):
-        return
-
-    print("\n[Debug selected tracks in bundle]")
-
-    for track_id in optimized_landmark_ids:
-        track_frames_dbg = [
-            f for f in db.frames(track_id)
-            if f in window_frames
-        ]
-
-        disps = []
-
-        for f in track_frames_dbg:
-            obs = db.observation(f, track_id)
-            disps.append(obs.x_left - obs.x_right)
-
-        print(
-            f"track={track_id} "
-            f"obs={len(track_frames_dbg)} "
-            f"disp_min={np.min(disps):.2f} "
-            f"disp_mean={np.mean(disps):.2f} "
-            f"disp_max={np.max(disps):.2f}"
-        )
-
-
-def print_top_factor_errors(graph, result):
-    errors = []
-
-    for i in range(graph.size()):
-        factor = graph.at(i)
-        errors.append((i, factor.error(result)))
-
-    errors.sort(key=lambda x: x[1], reverse=True)
-
-    print("\nTop factor errors:")
-    for idx, err in errors[:10]:
-        factor = graph.at(idx)
-
-        print(f"factor={idx} error={err}")
-        print(factor)
-
-        if err > 10:
-            print("BAD FACTOR")
-            print(factor)
-
-            for key in factor.keys():
-                print(gtsam.DefaultKeyFormatter(key))
-
-
-def print_relative_pose_debug(relative_pose, pose_start, pose_end):
-    R = relative_pose.rotation().matrix()
-
-    yaw = np.degrees(np.arctan2(R[1, 0], R[0, 0]))
-    pitch = np.degrees(np.arcsin(-R[2, 0]))
-    roll = np.degrees(np.arctan2(R[2, 1], R[2, 2]))
-
-    print("Pitch=", pitch)
-
-    if abs(pitch) > 5:
-        print("WARNING LARGE PITCH")
-
-    print(f"Yaw={yaw:.2f}")
-    print(f"Pitch={pitch:.2f}")
-    print(f"Roll={roll:.2f}")
-
-    print("\n[Debug BA relative pose]")
-    print("pose_start t:", np.array(pose_start.translation()))
-    print("pose_end t:", np.array(pose_end.translation()))
-
-    rel_t = np.array(relative_pose.translation())
-
-    print("relative t:", rel_t)
-    print("relative norm:", np.linalg.norm(rel_t))
-
-
-def extract_optimized_points(result, optimized_landmark_ids):
-    optimized_points_local = []
-
-    for track_id in optimized_landmark_ids:
-        point_key = symbol('q', track_id)
-
-        if not result.exists(point_key):
-            continue
-
-        p = np.array(result.atPoint3(point_key)).reshape(3)
-
-        if not np.all(np.isfinite(p)):
-            continue
-
-        if p[2] > 200:
-            # print(
-            #     f"[BAD LANDMARK] "
-            #     f"track={track_id} "
-            #     f"depth={p[2]:.2f} "
-            #     f"Continuing..."
-            # )
-            continue
-
-        optimized_points_local.append(p)
-
-    return np.array(optimized_points_local)
-
-
-def print_optimized_landmark_stats(optimized_points_local):
-    if len(optimized_points_local) == 0:
-        return
-
-    opt_norms = np.linalg.norm(
-        optimized_points_local,
-        axis=1
-    )
-
-    print("\n[Debug optimized landmarks]")
-    print("count:", len(opt_norms))
-    print("min:", np.min(opt_norms))
-    print("mean:", np.mean(opt_norms))
-    print("max:", np.max(opt_norms))
-
-
-def solve_bundle_window(db, start_frame, end_frame):
-
-    K_gtsam = init_gtsam_stereo_calibration()
-    _, P_left0, P_right0 = read_cameras()
-
-    graph = gtsam.NonlinearFactorGraph()
-    initial_estimate = gtsam.Values()
-
-    base_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
-
-    measurement_noise = gtsam.noiseModel.Robust.Create(
-        gtsam.noiseModel.mEstimator.Huber.Create(2.0),
-        base_noise
-    )
-
-    anchor_noise = gtsam.noiseModel.Diagonal.Sigmas(
-        np.ones(6) * 1e-6
-    )
-
-    window_frames = list(range(start_frame, end_frame + 1))
-
-    R_start, t_start = db.camera_poses[start_frame]
-
-
-
-    initialize_window_poses(
-        db,
-        window_frames,
-        R_start,
-        t_start,
-        initial_estimate
-    )
-
-    anchor_factor = add_anchor_factor(
-        graph,
-        start_frame,
-        anchor_noise
-    )
-
-    candidate_tracks = collect_candidate_tracks(
-        db,
-        window_frames
-    )
-
-    optimized_landmark_ids = add_valid_tracks_to_graph(
-        db,
-        candidate_tracks,
-        window_frames,
-        graph,
-        initial_estimate,
-        P_left0,
-        P_right0,
-        K_gtsam,
-        measurement_noise,
-        start_frame,
-        end_frame
-    )
-
-
-    if graph.size() < 5:
-        raise RuntimeError(
-            f"Bundle window {start_frame}->{end_frame} has too few factors."
-        )
-
-    initial_error = graph.error(initial_estimate)
-
-    assert_graph_has_all_keys(
-        graph,
-        initial_estimate
-    )
-
-
-
-    assert_all_poses_connected(
-        graph,
-        window_frames,
-        start_frame,
-        end_frame
-    )
-
-    result = optimize_graph(
-        graph,
-        initial_estimate
-    )
-
-
-    final_error = graph.error(result)
-
-
-
-    print(
-        f"Window {start_frame}->{end_frame}: "
-        f"factors={graph.size()}, "
-        f"error before={initial_error:.2f}, "
-        f"after={final_error:.2f}"
-    )
-
-    pose_start = result.atPose3(symbol('c', start_frame))
-    pose_end = result.atPose3(symbol('c', end_frame))
-
-    relative_pose = pose_start.between(pose_end)
-
-
-    optimized_points_local = extract_optimized_points(
-        result,
-        optimized_landmark_ids
-    )
-
-
-    return {
-        "result": result,
-        "graph": graph,
-        "initial    ": initial_estimate,
-        "relative_pose": relative_pose,
-        "optimized_points_local": optimized_points_local,
-        "anchor_factor": anchor_factor,
-        "start_frame": start_frame,
-        "end_frame": end_frame,
-        "initial_error": initial_error,
-        "final_error": final_error
-    }
+    
+    return disparity >= min_disp
