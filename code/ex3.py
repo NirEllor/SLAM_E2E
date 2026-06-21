@@ -1,10 +1,12 @@
 # ex3.py
-import van_utils as lib
-import matplotlib.pyplot as plt
-from ex1 import *
+import time
+
 from ex2 import *
 import cv2
 import numpy as np
+
+NUM_FRAMES = lib.get_num_frames()
+
 
 #--------------------------------------ex3---------------------------------------------------------
 
@@ -549,7 +551,40 @@ def q3(idx=0):
         'trajectory_gt': gt_positions
     }
 
+def benchmark_tracking_configs(idx=0):
+    """
+    High-level utility function to evaluate alternative tracking configuration parameters,
+    detector types, and variant PnP calculation methods. Moved to van_utils library layer.
+    """
+    configs = [
+        ("ORB", 700, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1000, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1500, cv2.SOLVEPNP_EPNP),
+        ("AKAZE", 0, cv2.SOLVEPNP_EPNP),
+        ("ORB", 1000, cv2.SOLVEPNP_P3P),
+        ("ORB", 1000, cv2.SOLVEPNP_AP3P),
+    ]
 
+    for detector_type, n_features, pnp_method in configs:
+        print("\n" + "="*40)
+        print(f"Config Setup -> Detector: {detector_type} | Limit: {n_features} | Method ID: {pnp_method}")
+
+        frame0_data = lib.run_single_pair(idx=idx, display=False, plot_3d=False)
+        frame1_data = lib.run_single_pair(idx=idx + 1, display=False, plot_3d=False)
+
+        matches = q3_2(frame0_data, frame1_data, draw=False)
+
+        try:
+            R, t, inliers, outliers = q3_5(
+                frame0_data, frame1_data, matches,
+                iterations=50, threshold=2
+            )
+            print(f"Resulting Temporal Intersections: {len(matches)}")
+            print(f"Verified Consensus Inliers: {len(inliers)}")
+            if matches:
+                print(f"Inlier Verification Success Ratio: {len(inliers) / len(matches):.3f}")
+        except RuntimeError as e:
+            print(f"Calculation pass aborted: {e}")
 def main():
     q3()
 

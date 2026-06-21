@@ -1,23 +1,21 @@
 # ex5.py
-import gtsam
 from gtsam import symbol
-import numpy as np
-import matplotlib.pyplot as plt
-import random
-import cv2
-import ex4 
 import os
 import van_utils as lib
 from gtsam.utils import plot as gtsam_plot
 from ex4 import q4_1
 
 output_dir = "./outputs"
+DB_PKL_PATH = "tracking_db_ex5.pkl"
 os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it doesn't exist
 import os
 import random
 import matplotlib.pyplot as plt
 import gtsam
 import numpy as np
+import pickle
+
+
 
 def q5_1(db):
     print("\n--- Task 5.1: Single Track Error Analysis with GTSAM ---")
@@ -424,7 +422,134 @@ def q5_3(db):
     plt.close()
 
     print("\n[Success] All plots and statistics for Section 5.3 successfully generated.")
+
+
+
+def load_or_build_db(force_rebuild=False, num_frames=None):
+    if num_frames is None:
+        num_frames = lib.get_num_frames()
+
+    if os.path.exists(DB_PKL_PATH) and not force_rebuild:
+        print("Loading TrackingDB from pickle...")
+        with open(DB_PKL_PATH, "rb") as f:
+            return pickle.load(f)
+
+    print("Building TrackingDB from scratch...")
+    db = q4_1(num_frames=num_frames)
+
+    with open(DB_PKL_PATH, "wb") as f:
+        pickle.dump(db, f)
+
+    return db
+
+def q5_4(db):
+    print("\n================================================================================")
+    print("SECTION 5.4: FULL SLIDING BUNDLE ADJUSTMENT")
+    print("================================================================================")
+
+    keyframes = lib.choose_keyframes(
+        db,
+        distance_threshold=2.5,
+        min_gap=5,
+        max_gap=20
+    )
+
+    bundle_windows = [
+        (keyframes[i], keyframes[i + 1])
+        for i in range(len(keyframes) - 1)
+    ]
+
+    print(f"Number of keyframes: {len(keyframes)}")
+    print(f"Number of bundle windows: {len(bundle_windows)}")
+
+    global_keyframe_poses = {
+        keyframes[0]: gtsam.Pose3()
+    }
+
+    all_points_global = []
+    last_bundle_result = None
+    failed_bundles = 0
+
+    for start_frame, end_frame in bundle_windows:
+        print(f"Solving bundle {start_frame}->{end_frame}", flush=True)
+
+        try:
+            bundle_result = lib.solve_bundle_window(
+                db,
+                start_frame,
+                end_frame
+            )
+        except Exception as e:
+            failed_bundles += 1
+            print(type(e))
+            print(repr(e))
+            print(f"[Warning] Bundle {start_frame}->{end_frame} failed: {e}")
+
+            if start_frame in global_keyframe_poses:
+                global_keyframe_poses[end_frame] = global_keyframe_poses[start_frame]
+
+            continue
+
+        last_bundle_result = bundle_result
+
+        start_global_pose = global_keyframe_poses[start_frame]
+        relative_pose = bundle_result["relative_pose"]
+
+        end_global_pose = start_global_pose.compose(relative_pose)
+        global_keyframe_poses[end_frame] = end_global_pose
+
+        points_local = bundle_result["optimized_points_local"]
+
+        for p_local in points_local:
+            p_global = start_global_pose.transformFrom(
+                gtsam.Point3(*p_local)
+            )
+            all_points_global.append(np.array(p_global).reshape(3))
+
+    print(f"Failed bundles: {failed_bundles}/{len(bundle_windows)}")
+
+    if last_bundle_result is None:
+        raise RuntimeError("No bundle window was successfully optimized.")
+
+    last_result = last_bundle_result["result"]
+    last_start = last_bundle_result["start_frame"]
+    last_start_pose = last_result.atPose3(symbol("c", last_start))
+
+    print("\n--- Last Bundle Diagnostics ---")
+    print(f"Last bundle start frame: {last_start}")
+    print(
+        "Position of first frame after optimization:",
+        lib.pose_translation_np(last_start_pose)
+    )
+
+    anchor_error = last_bundle_result["anchor_factor"].error(last_result)
+    print(f"Anchoring factor final error: {anchor_error:.12f}")
+    print(
+        "The anchoring error is approximately zero because the first camera "
+        "in each bundle is fixed to the local origin using a strong prior."
+    )
+
+    lib.plot_q5_4_results(
+        keyframes,
+        global_keyframe_poses,
+        all_points_global,
+        output_dir=output_dir
+    )
+
+    lib.plot_keyframe_localization_error(
+        keyframes,
+        global_keyframe_poses,
+        output_dir=output_dir
+    )
+
+    return global_keyframe_poses, all_points_global
+
+
     
-if __name__ == '__main__':
-    db = q4_1(num_frames=10)
-    q5_3(db)
+if __name__ == "__main__":
+    db = load_or_build_db(
+        force_rebuild=True,
+        num_frames=lib.get_num_frames()
+    )
+
+    q5_4(db)

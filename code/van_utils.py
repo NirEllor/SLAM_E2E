@@ -8,6 +8,7 @@ import os
 import gtsam
 from gtsam import symbol
 
+
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_PATH = PROJECT_ROOT / 'dataset' / 'dataset' / 'sequences' / '00'
 
@@ -539,7 +540,6 @@ def plot_transformed_clouds(frame0_data,
     plt.axis('equal')
     plt.grid(True)
 
-import time
 
 
 def compose_transform(R1, t1, R2, t2):
@@ -977,40 +977,7 @@ def project_stereo_point(K, R, t, t_stereo, X):
 
 
 
-def benchmark_tracking_configs(idx=0):
-    """
-    High-level utility function to evaluate alternative tracking configuration parameters,
-    detector types, and variant PnP calculation methods. Moved to van_utils library layer.
-    """
-    configs = [
-        ("ORB", 700, cv2.SOLVEPNP_EPNP),
-        ("ORB", 1000, cv2.SOLVEPNP_EPNP),
-        ("ORB", 1500, cv2.SOLVEPNP_EPNP),
-        ("AKAZE", 0, cv2.SOLVEPNP_EPNP),
-        ("ORB", 1000, cv2.SOLVEPNP_P3P),
-        ("ORB", 1000, cv2.SOLVEPNP_AP3P),
-    ]
 
-    for detector_type, n_features, pnp_method in configs:
-        print("\n" + "="*40)
-        print(f"Config Setup -> Detector: {detector_type} | Limit: {n_features} | Method ID: {pnp_method}")
-
-        frame0_data = run_single_pair(idx=idx, display=False, plot_3d=False)
-        frame1_data = run_single_pair(idx=idx + 1, display=False, plot_3d=False)
-
-        matches = q3_2(frame0_data, frame1_data, draw=False)
-
-        try:
-            R, t, inliers, outliers = q3_5(
-                frame0_data, frame1_data, matches,
-                iterations=50, threshold=2
-            )
-            print(f"Resulting Temporal Intersections: {len(matches)}")
-            print(f"Verified Consensus Inliers: {len(inliers)}")
-            if matches:
-                print(f"Inlier Verification Success Ratio: {len(inliers) / len(matches):.3f}")
-        except RuntimeError as e:
-            print(f"Calculation pass aborted: {e}")
 
 
 def run_single_pair(idx=0, display=False, plot_3d=True):
@@ -1214,3 +1181,333 @@ def valid_stereo_obs(obs, min_disp=1.0):
     disparity = obs.x_left - obs.x_right
     
     return disparity >= min_disp
+
+
+def pose_translation_np(pose):
+    return np.array(pose.translation()).reshape(3)
+
+
+def choose_keyframes(db, distance_threshold=2.5, max_gap=20, min_gap=5):
+    keyframes = [0]
+    last_kf = 0
+    accumulated_dist = 0.0
+
+    for idx in range(1, db.frame_num()):
+        R_prev, t_prev = db.camera_poses[idx - 1]
+        R_curr, t_curr = db.camera_poses[idx]
+
+        p_prev = camera_center(R_prev, t_prev)
+        p_curr = camera_center(R_curr, t_curr)
+
+        accumulated_dist += np.linalg.norm(p_curr - p_prev)
+        frames_since_last = idx - last_kf
+
+        if (
+            frames_since_last >= min_gap
+            and accumulated_dist >= distance_threshold
+        ) or frames_since_last >= max_gap:
+            keyframes.append(idx)
+            last_kf = idx
+            accumulated_dist = 0.0
+
+    if keyframes[-1] != db.frame_num() - 1:
+        keyframes.append(db.frame_num() - 1)
+
+    return keyframes
+
+def pose_translation_np(pose):
+    return np.array(pose.translation()).reshape(3)
+
+
+def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
+    K_gtsam = init_gtsam_stereo_calibration()
+    K_mat, P_left0, P_right0 = read_cameras()
+
+    graph = gtsam.NonlinearFactorGraph()
+    initial_estimate = gtsam.Values()
+
+    base_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
+    measurement_noise = gtsam.noiseModel.Robust.Create(
+        gtsam.noiseModel.mEstimator.Huber.Create(2.0),
+        base_noise
+    )
+
+    anchor_noise = gtsam.noiseModel.Diagonal.Sigmas(
+        np.ones(6) * 1e-6
+    )
+
+    window_frames = list(range(start_frame, end_frame + 1))
+
+    R_start, t_start = db.camera_poses[start_frame]
+
+    for f_id in window_frames:
+        R_f, t_f = db.camera_poses[f_id]
+
+        pose_local = w2c_to_local_gtsam_pose(
+            R_start,
+            t_start,
+            R_f,
+            t_f
+        )
+
+        initial_estimate.insert(symbol("c", f_id), pose_local)
+
+    start_key = symbol("c", start_frame)
+    anchor_pose = gtsam.Pose3()
+
+    anchor_factor = gtsam.PriorFactorPose3(
+        start_key,
+        anchor_pose,
+        anchor_noise
+    )
+
+    graph.add(anchor_factor)
+
+    candidate_tracks = set()
+    for f_id in window_frames:
+        candidate_tracks.update(db.tracks(f_id))
+
+    candidate_tracks = list(candidate_tracks)
+    random.shuffle(candidate_tracks)
+    candidate_tracks = candidate_tracks[:max_tracks_per_window]
+
+    optimized_landmark_ids = []
+    pose_factor_count = {f_id: 0 for f_id in window_frames}
+
+    for track_id in candidate_tracks:
+        track_frames = [
+            f for f in db.frames(track_id)
+            if f in window_frames
+        ]
+
+        if len(track_frames) < 2:
+            continue
+
+        init_frame = track_frames[0]
+        obs_init = db.observation(init_frame, track_id)
+
+        if not valid_stereo_obs(obs_init, min_disp=1.0):
+            continue
+
+        X_cam = triangulate_point_linear(
+            np.array([obs_init.x_left, obs_init.y]),
+            np.array([obs_init.x_right, obs_init.y]),
+            P_left0,
+            P_right0
+        )
+
+        if not np.all(np.isfinite(X_cam)):
+            continue
+
+        if X_cam[2] <= 2.0 or X_cam[2] > 120.0:
+            continue
+
+        init_pose = initial_estimate.atPose3(symbol("c", init_frame))
+        X_local = init_pose.transformFrom(
+            gtsam.Point3(float(X_cam[0]), float(X_cam[1]), float(X_cam[2]))
+        )
+
+        point_key = symbol("q", track_id)
+
+        temp_factors = []
+
+        for f_id in track_frames:
+            obs = db.observation(f_id, track_id)
+
+            if not valid_stereo_obs(obs, min_disp=1.0):
+                continue
+
+            temp_factors.append(
+                gtsam.GenericStereoFactor3D(
+                    gtsam.StereoPoint2(
+                        float(obs.x_left),
+                        float(obs.x_right),
+                        float(obs.y)
+                    ),
+                    measurement_noise,
+                    symbol("c", f_id),
+                    point_key,
+                    K_gtsam
+                )
+            )
+
+        if len(temp_factors) < 2:
+            continue
+
+        initial_estimate.insert(point_key, X_local)
+        optimized_landmark_ids.append(track_id)
+
+        for factor in temp_factors:
+            graph.add(factor)
+            c_key = factor.keys()[0]
+            f_id = gtsam.Symbol(c_key).index()
+            if f_id in pose_factor_count:
+                pose_factor_count[f_id] += 1
+
+    disconnected = [
+        f_id for f_id in window_frames
+        if f_id != start_frame and pose_factor_count[f_id] == 0
+    ]
+
+    if disconnected:
+        raise RuntimeError(
+            f"Disconnected poses in bundle {start_frame}->{end_frame}: {disconnected}"
+        )
+
+    print(f"Graph size before optimization: {graph.size()}")
+    print(f"Initial estimate size: {initial_estimate.size()}")
+
+    initial_error = graph.error(initial_estimate)
+
+    result = gtsam.LevenbergMarquardtOptimizer(
+        graph,
+        initial_estimate
+    ).optimize()
+
+    final_error = graph.error(result)
+
+    print(
+        f"Window {start_frame}->{end_frame}: "
+        f"factors={graph.size()}, "
+        f"error before={initial_error:.2f}, "
+        f"after={final_error:.2f}"
+    )
+
+    pose_start = result.atPose3(symbol("c", start_frame))
+    pose_end = result.atPose3(symbol("c", end_frame))
+
+    relative_pose = pose_start.between(pose_end)
+
+    optimized_points_local = []
+
+    for track_id in optimized_landmark_ids:
+        point_key = symbol("q", track_id)
+
+        if result.exists(point_key):
+            p = np.array(result.atPoint3(point_key)).reshape(3)
+
+            if np.all(np.isfinite(p)):
+                optimized_points_local.append(p)
+
+    return {
+        "result": result,
+        "graph": graph,
+        "initial": initial_estimate,
+        "relative_pose": relative_pose,
+        "optimized_points_local": np.array(optimized_points_local),
+        "anchor_factor": anchor_factor,
+        "start_frame": start_frame,
+        "end_frame": end_frame,
+        "initial_error": initial_error,
+        "final_error": final_error
+    }
+
+
+def plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global, output_dir="./outputs"):
+    gt_poses = read_ground_truth_poses()
+
+    estimated_positions = []
+    gt_positions = []
+
+    valid_keyframes = [
+        kf for kf in keyframes
+        if kf in global_keyframe_poses
+    ]
+
+    for kf in valid_keyframes:
+        estimated_positions.append(
+            pose_translation_np(global_keyframe_poses[kf])
+        )
+
+        _, t_gt = gt_poses[kf]
+        gt_positions.append(t_gt.flatten())
+
+    estimated_positions = np.array(estimated_positions)
+    gt_positions = np.array(gt_positions)
+    points = np.array(all_points_global)
+
+    plt.figure(figsize=(10, 8))
+
+    if len(points) > 0:
+        plt.scatter(
+            points[:, 0],
+            points[:, 2],
+            s=1,
+            alpha=0.25,
+            label="Optimized 3D points"
+        )
+
+    plt.plot(
+        estimated_positions[:, 0],
+        estimated_positions[:, 2],
+        "bo-",
+        markersize=3,
+        label="Optimized keyframes"
+    )
+
+    plt.plot(
+        gt_positions[:, 0],
+        gt_positions[:, 2],
+        "r--",
+        linewidth=2,
+        label="Ground truth keyframes"
+    )
+
+    plt.title("5.4: Optimized Keyframe Trajectory vs Ground Truth")
+    plt.xlabel("X")
+    plt.ylabel("Z")
+    plt.axis("equal")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    plt.savefig(
+        os.path.join(output_dir, "task_5_4_keyframes_vs_gt.png"),
+        dpi=200
+    )
+
+
+def plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_dir="./outputs"):
+    gt_poses = read_ground_truth_poses()
+
+    errors = []
+    valid_keyframes = []
+
+    for kf in keyframes:
+        if kf not in global_keyframe_poses:
+            continue
+
+        est_pos = pose_translation_np(global_keyframe_poses[kf])
+
+        _, t_gt = gt_poses[kf]
+        gt_pos = t_gt.flatten()
+
+        errors.append(np.linalg.norm(est_pos - gt_pos))
+        valid_keyframes.append(kf)
+
+    plt.figure(figsize=(12, 5))
+
+    plt.plot(
+        valid_keyframes,
+        errors,
+        marker="o",
+        linewidth=1
+    )
+
+    plt.title("5.4: Keyframe Localization Error")
+    plt.xlabel("Frame")
+    plt.ylabel("Localization Error [m]")
+    plt.grid(True)
+    plt.tight_layout()
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    plt.savefig(
+        os.path.join(output_dir, "task_5_4_keyframe_error.png"),
+        dpi=200
+    )
+
+    print(f"Mean keyframe localization error: {np.mean(errors):.3f} m")
+    print(f"Max keyframe localization error: {np.max(errors):.3f} m")
