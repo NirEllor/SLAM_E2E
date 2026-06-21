@@ -442,6 +442,75 @@ def load_or_build_db(force_rebuild=False, num_frames=None):
 
     return db
 
+
+def debug_coordinate_system_alignment(keyframes, global_keyframe_poses):
+    gt_poses = lib.read_ground_truth_poses()
+
+    print("\n[Debug coordinate system alignment]")
+
+    for kf in keyframes[:10]:
+        if kf not in global_keyframe_poses:
+            continue
+
+        est_pose = global_keyframe_poses[kf]
+
+        est_t = lib.pose_translation_np(est_pose)
+        est_inv_t = lib.pose_translation_np(est_pose.inverse())
+
+        R_gt, t_gt = gt_poses[kf]
+
+        gt_t = t_gt.flatten()
+        gt_center = lib.camera_center(R_gt, t_gt)
+
+        print(f"\nKF {kf}")
+        print("est_t:      ", est_t)
+        print("est_inv_t:  ", est_inv_t)
+        print("gt_t:       ", gt_t)
+        print("gt_center:  ", gt_center)
+
+        print("err est_t vs gt_center:     ", np.linalg.norm(est_t - gt_center))
+        print("err est_inv_t vs gt_center: ", np.linalg.norm(est_inv_t - gt_center))
+        print("err est_t vs gt_t:          ", np.linalg.norm(est_t - gt_t))
+        print("err est_inv_t vs gt_t:      ", np.linalg.norm(est_inv_t - gt_t))
+
+
+def debug_scale_drift(keyframes, global_keyframe_poses):
+    gt_poses = lib.read_ground_truth_poses()
+
+    est_positions = []
+    gt_positions = []
+
+    for kf in keyframes:
+        if kf not in global_keyframe_poses:
+            continue
+
+        est_positions.append(
+            lib.pose_translation_np(global_keyframe_poses[kf])
+        )
+
+        R_gt, t_gt = gt_poses[kf]
+        gt_positions.append(
+            lib.camera_center(R_gt, t_gt)
+        )
+
+    est_positions = np.array(est_positions)
+    gt_positions = np.array(gt_positions)
+
+    est_steps = np.linalg.norm(
+        np.diff(est_positions, axis=0),
+        axis=1
+    )
+
+    gt_steps = np.linalg.norm(
+        np.diff(gt_positions, axis=0),
+        axis=1
+    )
+
+    print("\n[Debug scale drift]")
+    print("mean estimated step:", np.mean(est_steps))
+    print("mean GT step:", np.mean(gt_steps))
+    print("scale ratio est/gt:", np.sum(est_steps) / np.sum(gt_steps))
+
 def q5_4(db):
     print("\n================================================================================")
     print("SECTION 5.4: FULL SLIDING BUNDLE ADJUSTMENT")
@@ -528,6 +597,15 @@ def q5_4(db):
         "The anchoring error is approximately zero because the first camera "
         "in each bundle is fixed to the local origin using a strong prior."
     )
+    debug_coordinate_system_alignment(
+        keyframes,
+        global_keyframe_poses
+    )
+
+    debug_scale_drift(
+        keyframes,
+        global_keyframe_poses
+    )
 
     lib.plot_q5_4_results(
         keyframes,
@@ -548,8 +626,8 @@ def q5_4(db):
     
 if __name__ == "__main__":
     db = load_or_build_db(
-        force_rebuild=True,
-        num_frames=lib.get_num_frames()
+        force_rebuild=False,
+        num_frames=lib.get_num_frames(),
     )
 
     q5_4(db)

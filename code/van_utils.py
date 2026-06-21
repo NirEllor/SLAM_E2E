@@ -1419,8 +1419,10 @@ def plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global, outpu
             pose_translation_np(global_keyframe_poses[kf])
         )
 
-        _, t_gt = gt_poses[kf]
-        gt_positions.append(t_gt.flatten())
+        R_gt, t_gt = gt_poses[kf]
+        gt_positions.append(
+            camera_center(R_gt, t_gt)
+        )
 
     estimated_positions = np.array(estimated_positions)
     gt_positions = np.array(gt_positions)
@@ -1475,17 +1477,32 @@ def plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_di
     errors = []
     valid_keyframes = []
 
+    # print("\n[Debug localization comparison]")
+
     for kf in keyframes:
         if kf not in global_keyframe_poses:
             continue
 
-        est_pos = pose_translation_np(global_keyframe_poses[kf])
+        est_pos = pose_translation_np(
+            global_keyframe_poses[kf]
+        )
 
-        _, t_gt = gt_poses[kf]
-        gt_pos = t_gt.flatten()
+        R_gt, t_gt = gt_poses[kf]
+        gt_pos = camera_center(R_gt, t_gt)
 
-        errors.append(np.linalg.norm(est_pos - gt_pos))
+        err = np.linalg.norm(est_pos - gt_pos)
+
+        errors.append(err)
         valid_keyframes.append(kf)
+
+        # print(f"KF {kf}")
+        # print(f"  est_pos:  {est_pos}")
+        # print(f"  gt_pos:   {gt_pos}")
+        # print(f"  error:    {err:.3f} m")
+
+    if len(errors) == 0:
+        print("No valid localization errors to plot.")
+        return
 
     plt.figure(figsize=(12, 5))
 
@@ -1504,10 +1521,16 @@ def plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_di
 
     os.makedirs(output_dir, exist_ok=True)
 
-    plt.savefig(
-        os.path.join(output_dir, "task_5_4_keyframe_error.png"),
-        dpi=200
+    output_path = os.path.join(
+        output_dir,
+        "task_5_4_keyframe_error.png"
     )
 
-    print(f"Mean keyframe localization error: {np.mean(errors):.3f} m")
-    print(f"Max keyframe localization error: {np.max(errors):.3f} m")
+    plt.savefig(output_path, dpi=200)
+
+    print(
+        f"Mean keyframe localization error: {np.mean(errors):.3f} m"
+    )
+    print(
+        f"Max keyframe localization error: {np.max(errors):.3f} m"
+    )
