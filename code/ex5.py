@@ -162,7 +162,7 @@ def q5_3(db):
 
         if len(temporary_factors) >= 2:
             initial_estimate.insert(point_key, X_local)
-            landmarks_added.add(t_id)  # הוספה בטוחה רק למה שקיים ב-initial_estimate
+            landmarks_added.add(t_id)  
             for factor in temporary_factors:
                 graph.add(factor)
 
@@ -535,7 +535,7 @@ def q5_4(db):
         keyframes[0]: gtsam.Pose3()
     }
 
-    all_points_global = []
+    global_landmarks_dict = {}
     last_bundle_result = None
     failed_bundles = 0
 
@@ -556,7 +556,6 @@ def q5_4(db):
 
             if start_frame in global_keyframe_poses:
                 global_keyframe_poses[end_frame] = global_keyframe_poses[start_frame]
-
             continue
 
         last_bundle_result = bundle_result
@@ -567,18 +566,21 @@ def q5_4(db):
         end_global_pose = start_global_pose.compose(relative_pose)
         global_keyframe_poses[end_frame] = end_global_pose
 
+        optimized_landmark_ids = bundle_result["optimized_landmark_ids"]
         points_local = bundle_result["optimized_points_local"]
 
-        for p_local in points_local:
+        for track_id, p_local in zip(optimized_landmark_ids, points_local):
             p_global = start_global_pose.transformFrom(
                 gtsam.Point3(*p_local)
             )
-            all_points_global.append(np.array(p_global).reshape(3))
+            global_landmarks_dict[track_id] = np.array(p_global).reshape(3)
 
     print(f"Failed bundles: {failed_bundles}/{len(bundle_windows)}")
 
     if last_bundle_result is None:
         raise RuntimeError("No bundle window was successfully optimized.")
+
+    all_points_global = list(global_landmarks_dict.values())
 
     last_result = last_bundle_result["result"]
     last_start = last_bundle_result["start_frame"]
@@ -597,6 +599,7 @@ def q5_4(db):
         "The anchoring error is approximately zero because the first camera "
         "in each bundle is fixed to the local origin using a strong prior."
     )
+
     debug_coordinate_system_alignment(
         keyframes,
         global_keyframe_poses
@@ -621,7 +624,6 @@ def q5_4(db):
     )
 
     return global_keyframe_poses, all_points_global
-
 
     
 if __name__ == "__main__":

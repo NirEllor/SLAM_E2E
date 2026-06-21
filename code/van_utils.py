@@ -1218,7 +1218,6 @@ def choose_keyframes(db, distance_threshold=2.5, max_gap=20, min_gap=5):
 def pose_translation_np(pose):
     return np.array(pose.translation()).reshape(3)
 
-
 def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
     K_gtsam = init_gtsam_stereo_calibration()
     K_mat, P_left0, P_right0 = read_cameras()
@@ -1232,53 +1231,61 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
         base_noise
     )
 
-    anchor_noise = gtsam.noiseModel.Diagonal.Sigmas(
-        np.ones(6) * 1e-6
-    )
-
     window_frames = list(range(start_frame, end_frame + 1))
 
-    R_start, t_start = db.camera_poses[start_frame]
-
-    for f_id in window_frames:
-        R_f, t_f = db.camera_poses[f_id]
-
-        pose_local = w2c_to_local_gtsam_pose(
-            R_start,
-            t_start,
-            R_f,
-            t_f
-        )
-
-        initial_estimate.insert(symbol("c", f_id), pose_local)
-
-    start_key = symbol("c", start_frame)
-    anchor_pose = gtsam.Pose3()
-
-    anchor_factor = gtsam.PriorFactorPose3(
-        start_key,
-        anchor_pose,
-        anchor_noise
+    R_start_w2c, t_start_w2c = db.camera_poses[start_frame]
+    pose_start_global = gtsam.Pose3(
+        gtsam.Rot3(R_start_w2c.T), 
+        gtsam.Point3((-R_start_w2c.T @ t_start_w2c).flatten())
     )
 
-    graph.add(anchor_factor)
+    for f_id in window_frames:
+        pose_key = symbol("c", f_id)
+        R_f_w2c, t_f_w2c = db.camera_poses[f_id]
+
+        # פוזה גלובלית במונחי GTSAM (Camera to World)
+        pose_f_global = gtsam.Pose3(
+            gtsam.Rot3(R_f_w2c.T), 
+            gtsam.Point3((-R_f_w2c.T @ t_f_w2c).flatten())
+        )
+
+        pose_local = pose_start_global.between(pose_f_global)
+        initial_estimate.insert(pose_key, pose_local)
+
+        if f_id == start_frame:
+            anchor_factor = gtsam.PriorFactorPose3(
+                pose_key, 
+                gtsam.Pose3(), 
+                gtsam.noiseModel.Diagonal.Sigmas(np.ones(6) * 1e-6)
+            )
+            graph.add(anchor_factor)
 
     candidate_tracks = set()
     for f_id in window_frames:
         candidate_tracks.update(db.tracks(f_id))
-
     candidate_tracks = list(candidate_tracks)
-    random.shuffle(candidate_tracks)
-    candidate_tracks = candidate_tracks[:max_tracks_per_window]
+
+    guaranteed_tracks = set()
+    for f_id in window_frames:
+        tracks_in_frame = list(db.tracks(f_id))
+        if len(tracks_in_frame) > 0:
+            sampled = random.sample(tracks_in_frame, min(15, len(tracks_in_frame)))
+            guaranteed_tracks.update(sampled)
+
+    remaining_slots = max_tracks_per_window - len(guaranteed_tracks)
+    all_candidates = list(set(candidate_tracks) - guaranteed_tracks)
+
+    if remaining_slots > 0 and len(all_candidates) > 0:
+        additional_tracks = random.sample(all_candidates, min(remaining_slots, len(all_candidates)))
+        final_tracks_to_optimize = list(guaranteed_tracks) + additional_tracks
+    else:
+        final_tracks_to_optimize = list(guaranteed_tracks)
 
     optimized_landmark_ids = []
     pose_factor_count = {f_id: 0 for f_id in window_frames}
 
-    for track_id in candidate_tracks:
-        track_frames = [
-            f for f in db.frames(track_id)
-            if f in window_frames
-        ]
+    for track_id in final_tracks_to_optimize:
+        track_frames = [f for f in db.frames(track_id) if f in window_frames]
 
         if len(track_frames) < 2:
             continue
@@ -1308,7 +1315,6 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
         )
 
         point_key = symbol("q", track_id)
-
         temp_factors = []
 
         for f_id in track_frames:
@@ -1348,7 +1354,6 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
         f_id for f_id in window_frames
         if f_id != start_frame and pose_factor_count[f_id] == 0
     ]
-
     if disconnected:
         raise RuntimeError(
             f"Disconnected poses in bundle {start_frame}->{end_frame}: {disconnected}"
@@ -1379,13 +1384,11 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
     relative_pose = pose_start.between(pose_end)
 
     optimized_points_local = []
-
     for track_id in optimized_landmark_ids:
         point_key = symbol("q", track_id)
 
         if result.exists(point_key):
             p = np.array(result.atPoint3(point_key)).reshape(3)
-
             if np.all(np.isfinite(p)):
                 optimized_points_local.append(p)
 
@@ -1395,13 +1398,13 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
         "initial": initial_estimate,
         "relative_pose": relative_pose,
         "optimized_points_local": np.array(optimized_points_local),
-        "anchor_factor": anchor_factor,
+        "optimized_landmark_ids": optimized_landmark_ids, 
+        "anchor_factor": anchor_factor if 'anchor_factor' in locals() else graph.at(0),
         "start_frame": start_frame,
         "end_frame": end_frame,
         "initial_error": initial_error,
         "final_error": final_error
     }
-
 
 def plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global, output_dir="./outputs"):
     gt_poses = read_ground_truth_poses()
