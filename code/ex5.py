@@ -1,20 +1,23 @@
 # ex5.py
-from gtsam import symbol
 import os
-import van_utils as lib
+import random
+import pickle
+import numpy as np
+import matplotlib.pyplot as plt
+import gtsam
+from gtsam import symbol
 from gtsam.utils import plot as gtsam_plot
+import van_utils as lib
 
 output_dir = "./outputs"
 DB_PKL_PATH = "tracking_db_ex5.pkl"
 os.makedirs(output_dir, exist_ok=True)  # Creates the folder if it doesn't exist
-import os
-import random
-import matplotlib.pyplot as plt
-import gtsam
-import numpy as np
-import pickle
 
 
+
+# =============================================================================
+# MAIN TASK FUNCTIONS
+# =============================================================================
 
 def q5_1(db):
     print("\n--- Task 5.1: Single Track Error Analysis with GTSAM ---")
@@ -58,27 +61,9 @@ def q5_1(db):
         
         factor_errors.append(lib.compute_single_factor_error(poses_dict[f_id], K_gtsam, X_world_gtsam, obs))
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(frame_indices, left_reprojection_errors, label="Left camera reprojection error", color="#1f77b4")
-    plt.plot(frame_indices, right_reprojection_errors, label="Right camera reprojection error", color="#ff7f0e")
-    plt.title("Right camera reprojection error") # כותרת הגרף כפי שמופיעה בדוגמה
-    plt.xlabel("Frame index")
-    plt.ylabel("Reprojection error (L2 norm) - pixels")
-    plt.grid(True)
-    plt.legend(loc="upper right")
-    reproj_path = os.path.join(output_dir, "reprojection_error_graph.png")
-    plt.savefig(reproj_path, dpi=300)
-    plt.close()
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(frame_indices, factor_errors, color="red", marker='s')
-    plt.title("Factor error graph")
-    plt.xlabel("Frame index")
-    plt.ylabel("Factor Error")
-    plt.grid(True)
-    factor_path = os.path.join(output_dir, "factor_error_graph.png")
-    plt.savefig(factor_path, dpi=300)
-    plt.close()
+    # Call extracted plotting functions
+    lib.reprojection_error_graph(frame_indices, left_reprojection_errors, right_reprojection_errors, output_dir)
+    lib.factor_error_graph(frame_indices, factor_errors, output_dir)
 
 
 def q5_3(db):
@@ -179,7 +164,7 @@ def q5_3(db):
     print("--------------------------------------------------------------------------------")
     print(f"Total Factors in Graph (including prior):        {num_factors}")
     print(f"  - Prior factors (anchoring start pose):        1")
-    print(f"  - Stereo projection factors:                   {num_projection_factors}")
+    print(f"  - Stereo projection factors:                    {num_projection_factors}")
     print(f"  - Landmarks inserted into graph:               {len(landmarks_added)}")
     print(f"\nTotal Factor Graph Error   BEFORE Optimization:  {initial_total_error:.4f}")
     print(f"Average Factor Error       BEFORE Optimization:  {initial_avg_error:.4f}")
@@ -300,128 +285,14 @@ def q5_3(db):
         lm_pts.append([pt[0], pt[1], pt[2]])
     lm_filtered = np.array(lm_pts) if lm_pts else np.empty((0, 3))
 
-    # -------------------------------------------------------------------------
-    # PLOT 1: 3D Optimized Trajectory with Camera Axes
-    # -------------------------------------------------------------------------
-    fig3d = plt.figure(figsize=(8, 6))
-    ax3d = fig3d.add_subplot(111, projection='3d')
-    
-    xs_plot = cam_positions[:, 2]  
-    ys_plot = cam_positions[:, 0]  
-    zs_plot = -cam_positions[:, 1] 
-
-    ax3d.plot(xs_plot, ys_plot, zs_plot, 'k--', linewidth=1.5, zorder=1)
-    
-    axis_length = 0.25  
-    for i in range(len(window_frames)):
-        pose = result.atPose3(symbol('c', window_frames[i]))
-        R = pose.rotation().matrix()
-        cx, cy, cz = xs_plot[i], ys_plot[i], zs_plot[i]
-        
-        ax3d.scatter(cx, cy, cz, color='black', s=15, zorder=2)
-        
-        ax_right   = R[:, 0]
-        ax_down    = R[:, 1]
-        ax_forward = R[:, 2]
-        
-        ax3d.plot([cx, cx + axis_length * ax_right[2]],
-                  [cy, cy + axis_length * ax_right[0]],
-                  [cz, cz - axis_length * ax_right[1]], color='r', linewidth=1.5)
-        ax3d.plot([cx, cx - axis_length * ax_down[2]],
-                  [cy, cy - axis_length * ax_down[0]],
-                  [cz, cz + axis_length * ax_down[1]], color='g', linewidth=1.5)
-        ax3d.plot([cx, cx + axis_length * ax_forward[2]],
-                  [cy, cy + axis_length * ax_forward[0]],
-                  [cz, cz - axis_length * ax_forward[1]], color='b', linewidth=1.5)
-
-    ax3d.set_title("Local Window Bundle Adjustment: 3D Optimized Trajectory\n", fontsize=11, fontweight='bold')
-    ax3d.set_xlabel("Z (Forward) [m]")
-    ax3d.set_ylabel("X (Right) [m]")
-    ax3d.set_zlabel("-Y (Up) [m]")
-    ax3d.set_xlim([0, 6])
-    ax3d.set_ylim([-2, 2])
-    ax3d.set_zlim([-2, 2])
-    ax3d.view_init(elev=14, azim=-72)
-    plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_3D.png"), dpi=200, bbox_inches='tight')
-    plt.close()
-
-    # -------------------------------------------------------------------------
-    # PLOT 2: GTSAM Factor Graph State with Marginal Covariances
-    # -------------------------------------------------------------------------
-    fig_cov = plt.figure(figsize=(8, 6))
-    ax_cov = fig_cov.add_subplot(111, projection='3d')
-    ax_cov.set_title("Plot Trajectory\nGTSAM Factor Graph State with Marginal Covariances\n", fontsize=11, fontweight='bold')
-    
-    try:
-        marginals = gtsam.Marginals(graph, result)
-        for f_id in window_frames:
-            pose_key = symbol('c', f_id)
-            pose = result.atPose3(pose_key)
-            cov = marginals.marginalCovariance(pose_key)
-            gtsam_plot.plot_pose3_on_axes(ax_cov, pose, axis_length=0.4, P=cov)
-    except Exception as e:
-        print(f"[Warning] Covariance layout fallback: {e}")
-        for f_id in window_frames:
-            pose = result.atPose3(symbol('c', f_id))
-            gtsam_plot.plot_pose3_on_axes(ax_cov, pose, axis_length=0.4)
-
-    ax_cov.set_xlabel("X axis")
-    ax_cov.set_ylabel("Y axis")
-    ax_cov.set_zlabel("Z axis")
-    ax_cov.view_init(elev=20, azim=-35)
-    plt.savefig(os.path.join(output_dir, "task_5_3_marginal_covariances.png"), dpi=200, bbox_inches='tight')
-    plt.close()
-
-    # -------------------------------------------------------------------------
-    # PLOT 3: 2D Bird's-Eye View — All Cameras + All Landmarks
-    # -------------------------------------------------------------------------
-    fig2d_full, ax2d_full = plt.subplots(figsize=(8, 8))
-
-    if len(lm_filtered) > 0:
-        ax2d_full.scatter(lm_filtered[:, 0], lm_filtered[:, 2],
-                          s=2, c='orange', alpha=0.6, label=f'Landmarks ({len(lm_filtered)})')
-
-    ax2d_full.plot(initial_cam_positions[:, 0], initial_cam_positions[:, 2],
-                   'b-+', alpha=0.6, label='Initial Cameras (PnP)')
-    ax2d_full.plot(cam_positions[:, 0], cam_positions[:, 2],
-                   'r-^', markersize=6, linewidth=1.5, label='Optimized Cameras (BA)')
-
-    for i, f_id in enumerate(window_frames):
-        ax2d_full.annotate(str(f_id),
-                           (cam_positions[i, 0], cam_positions[i, 2]),
-                           textcoords="offset points", xytext=(4, 4),
-                           fontsize=7, color='darkred')
-
-    ax2d_full.set_title("Top-Down View (X-Z) of Bundle Window\nAll Cameras & Landmarks", fontsize=11, fontweight='bold')
-    ax2d_full.set_xlabel("X [m]")
-    ax2d_full.set_ylabel("Z (Forward) [m]")
-    ax2d_full.set_xlim([-50, 50])
-    ax2d_full.set_ylim([-10, 100])
-    ax2d_full.grid(True, alpha=0.5)
-    ax2d_full.legend(loc="upper right")
-    plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_2D_full.png"), dpi=150, bbox_inches='tight')
-    plt.close()
-
-    # -------------------------------------------------------------------------
-    # PLOT 4: 2D Bird's-Eye View — Zoomed Trajectory Comparison
-    # -------------------------------------------------------------------------
-    fig2d_zoom, ax2d_zoom = plt.subplots(figsize=(6, 7))
-    ax2d_zoom.plot(initial_cam_positions[:, 0], initial_cam_positions[:, 2],
-                   'b-o', alpha=0.5, markersize=4, label='Initial (PnP)')
-    ax2d_zoom.plot(cam_positions[:, 0], cam_positions[:, 2],
-                   'r-o', markersize=4, label='Optimized (BA)')
-    ax2d_zoom.set_title("Local Window Bundle Adjustment: 2D Bird's-Eye View Trajectory\n(Trajectory zoomed)")
-    ax2d_zoom.set_xlabel("X Coordinate (East) [m]")
-    ax2d_zoom.set_ylabel("Z Coordinate (North) [m]")
-    ax2d_zoom.set_xlim([-2, 2])
-    ax2d_zoom.set_ylim([-2, 7])
-    ax2d_zoom.grid(True, alpha=0.3)
-    ax2d_zoom.legend()
-    plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_2D_zoomed.png"), dpi=150)
-    plt.close()
+    # Call extracted plotting functions
+    axis_length = 0.25 
+    lib.bundle1_3D(window_frames, cam_positions, result, axis_length, output_dir)
+    lib.marginal_covariances(window_frames, graph, result, output_dir)
+    lib.bundle1_2D_full(window_frames, initial_cam_positions, cam_positions, lm_filtered, output_dir)
+    lib.bundle1_2D_zoomed(initial_cam_positions, cam_positions, output_dir)
 
     print("\n[Success] All plots and statistics for Section 5.3 successfully generated.")
-
 
 
 def q5_4(db):
