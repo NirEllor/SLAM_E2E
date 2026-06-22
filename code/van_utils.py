@@ -1537,3 +1537,259 @@ def plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_di
     print(
         f"Max keyframe localization error: {np.max(errors):.3f} m"
     )
+
+
+
+
+import pickle
+DB_PKL_PATH = "tracking_db_ex5.pkl"
+from tracking_database_custom import TrackingDB
+
+def build_data(num_frames=10):
+    """
+    4.1: Building the long-term tracking database.
+    Also stores global PnP camera poses for Exercise 5.
+    Pose convention:
+        X_cam = R_global @ X_left0 + t_global
+    """
+
+    db = TrackingDB()
+    inlier_percentages = []
+
+    # Global pose of frame 0 in left0 coordinates
+    R_global = np.eye(3)
+    t_global = np.zeros((3, 1))
+
+    camera_poses = [(R_global.copy(), t_global.copy())]
+
+    prev_data = run_single_pair(
+        idx=0,
+        display=False,
+        plot_3d=False
+    )
+
+    bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+
+    for idx in range(1, num_frames):
+        print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1}")
+
+        curr_data = run_single_pair(
+            idx=idx,
+            display=False,
+            plot_3d=False
+        )
+
+        knn_matches = bf_matcher.knnMatch(
+            prev_data["des_left"],
+            curr_data["des_left"],
+            k=2
+        )
+
+        temporal_matches = [
+            m for m, n in knn_matches
+            if m.distance < 0.7 * n.distance
+        ]
+
+        try:
+            correspondences = build_pnp_correspondences(
+                prev_data,
+                curr_data,
+                temporal_matches
+            )
+
+            if len(correspondences) < 4:
+                raise RuntimeError("Not enough correspondences for PnP-RANSAC.")
+
+            best_inliers = []
+            best_outliers = []
+            best_R = None
+            best_t = None
+
+            k_matrix, _, _ = read_cameras()
+
+            no_improvement = 0
+            max_no_improvement = 12
+
+            for _ in range(50):
+                sample = random.sample(correspondences, 4)
+
+                obj_pts = np.array(
+                    [c["X"] for c in sample],
+                    dtype=np.float32
+                )
+
+                img_pts = np.array(
+                    [c["obs_left1"] for c in sample],
+                    dtype=np.float32
+                )
+
+                success, rvec, tvec = cv2.solvePnP(
+                    obj_pts,
+                    img_pts,
+                    k_matrix,
+                    None,
+                    flags=cv2.SOLVEPNP_EPNP
+                )
+
+                if not success:
+                    no_improvement += 1
+                    continue
+
+                R_candidate, _ = cv2.Rodrigues(rvec)
+
+                inliers, outliers = evaluate_supporters(
+                    correspondences,
+                    prev_data,
+                    curr_data,
+                    R_candidate,
+                    tvec,
+                    threshold=2
+                )
+
+                if len(inliers) > len(best_inliers):
+                    best_inliers = inliers
+                    best_outliers = outliers
+                    best_R = R_candidate
+                    best_t = tvec
+                    no_improvement = 0
+                else:
+                    no_improvement += 1
+
+                if no_improvement >= max_no_improvement:
+                    break
+
+            if best_R is None:
+                raise RuntimeError("RANSAC failed to find a valid pose.")
+
+            total = len(best_inliers) + len(best_outliers)
+
+            if total > 0:
+                inlier_percentages.append(
+                    100.0 * len(best_inliers) / total
+                )
+            else:
+                inlier_percentages.append(0.0)
+
+            # Compose global pose:
+            R_global, t_global = compose_transform(
+                R_global,
+                t_global,
+                best_R,
+                best_t
+            )
+
+        except RuntimeError as e:
+            print(f"PnP-RANSAC failure at frame link {idx - 1}->{idx}: {e}")
+            inlier_percentages.append(0.0)
+            R_global = R_global.copy()
+            t_global = t_global.copy()
+            best_inliers = [] 
+
+        ransac_temporal_matches = [c['temporal_match'] for c in best_inliers]
+
+        prev_stereo = build_stereo_dict(prev_data)
+        curr_stereo = build_stereo_dict(curr_data)
+
+        db.update_tracks(
+            idx,
+            ransac_temporal_matches,
+            prev_stereo,
+            curr_stereo,
+            prev_data,
+            curr_data
+        )
+
+        camera_poses.append((R_global.copy(), t_global.copy()))
+
+        prev_data = curr_data
+
+    db.inlier_percentages = inlier_percentages
+    db.camera_poses = camera_poses
+
+    return db
+
+def load_or_build_db(force_rebuild=False, num_frames=None):
+    if num_frames is None:
+        num_frames = get_num_frames()
+
+    if os.path.exists(DB_PKL_PATH) and not force_rebuild:
+        print("Loading TrackingDB from pickle...")
+        with open(DB_PKL_PATH, "rb") as f:
+            return pickle.load(f)
+
+    print("Building TrackingDB from scratch...")
+    db = build_data(num_frames=num_frames)
+
+    with open(DB_PKL_PATH, "wb") as f:
+        pickle.dump(db, f)
+
+    return db
+
+
+def debug_coordinate_system_alignment(keyframes, global_keyframe_poses):
+    gt_poses = read_ground_truth_poses()
+
+    print("\n[Debug coordinate system alignment]")
+
+    for kf in keyframes[:10]:
+        if kf not in global_keyframe_poses:
+            continue
+
+        est_pose = global_keyframe_poses[kf]
+
+        est_t = pose_translation_np(est_pose)
+        est_inv_t = pose_translation_np(est_pose.inverse())
+
+        R_gt, t_gt = gt_poses[kf]
+
+        gt_t = t_gt.flatten()
+        gt_center = camera_center(R_gt, t_gt)
+
+        print(f"\nKF {kf}")
+        print("est_t:      ", est_t)
+        print("est_inv_t:  ", est_inv_t)
+        print("gt_t:       ", gt_t)
+        print("gt_center:  ", gt_center)
+
+        print("err est_t vs gt_center:     ", np.linalg.norm(est_t - gt_center))
+        print("err est_inv_t vs gt_center: ", np.linalg.norm(est_inv_t - gt_center))
+        print("err est_t vs gt_t:          ", np.linalg.norm(est_t - gt_t))
+        print("err est_inv_t vs gt_t:      ", np.linalg.norm(est_inv_t - gt_t))
+
+
+def debug_scale_drift(keyframes, global_keyframe_poses):
+    gt_poses = read_ground_truth_poses()
+
+    est_positions = []
+    gt_positions = []
+
+    for kf in keyframes:
+        if kf not in global_keyframe_poses:
+            continue
+
+        est_positions.append(
+            pose_translation_np(global_keyframe_poses[kf])
+        )
+
+        R_gt, t_gt = gt_poses[kf]
+        gt_positions.append(
+            camera_center(R_gt, t_gt)
+        )
+
+    est_positions = np.array(est_positions)
+    gt_positions = np.array(gt_positions)
+
+    est_steps = np.linalg.norm(
+        np.diff(est_positions, axis=0),
+        axis=1
+    )
+
+    gt_steps = np.linalg.norm(
+        np.diff(gt_positions, axis=0),
+        axis=1
+    )
+
+    print("\n[Debug scale drift]")
+    print("mean estimated step:", np.mean(est_steps))
+    print("mean GT step:", np.mean(gt_steps))
+    print("scale ratio est/gt:", np.sum(est_steps) / np.sum(gt_steps))
