@@ -7,6 +7,8 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 import os
 import gtsam
 from gtsam import symbol
+from gtsam.utils import plot as gtsam_plot
+
 
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -1940,3 +1942,220 @@ def bundle1_2D_zoomed(initial_cam_positions, cam_positions, output_dir):
     ax2d_zoom.legend()
     plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_2D_zoomed.png"), dpi=150)
     plt.close()
+
+
+def covariance_to_noise_model(cov, min_sigma=1e-6):
+    """
+    Convert a 6x6 covariance matrix into a GTSAM Gaussian noise model.
+    Adds small diagonal regularization for numerical stability.
+    """
+    cov = np.asarray(cov, dtype=np.float64)
+
+    if cov.shape != (6, 6):
+        raise ValueError(f"Expected 6x6 covariance, got {cov.shape}")
+
+    cov = 0.5 * (cov + cov.T)
+    cov = cov + np.eye(6) * (min_sigma ** 2)
+
+    return gtsam.noiseModel.Gaussian.Covariance(cov)
+
+
+def build_pose_graph_initial_estimate(relative_poses):
+    """
+    Initialize all keyframe poses by chaining relative poses.
+    Handles occasional gaps caused by failed bundle windows.
+    """
+    initial = gtsam.Values()
+
+    sorted_edges = sorted(relative_poses.keys())
+    if len(sorted_edges) == 0:
+        raise RuntimeError("No relative poses were provided.")
+
+    first_kf = sorted_edges[0][0]
+
+    current_pose = gtsam.Pose3()
+    initial.insert(symbol("c", first_kf), current_pose)
+
+    last_known_kf = first_kf
+    last_known_pose = current_pose
+
+    for start_kf, end_kf in sorted_edges:
+        start_key = symbol("c", start_kf)
+        end_key = symbol("c", end_kf)
+
+        if initial.exists(start_key):
+            start_pose = initial.atPose3(start_key)
+        else:
+            # Fallback for a disconnected/gapped edge
+            start_pose = last_known_pose
+            initial.insert(start_key, start_pose)
+
+        rel_pose = relative_poses[(start_kf, end_kf)]
+        end_pose = start_pose.compose(rel_pose)
+
+        if not initial.exists(end_key):
+            initial.insert(end_key, end_pose)
+
+        last_known_kf = end_kf
+        last_known_pose = end_pose
+
+    return initial
+
+
+def build_pose_graph(relative_poses, relative_covs):
+    """
+    Build Pose Graph from relative keyframe constraints.
+    Nodes: keyframe poses.
+    Edges: BetweenFactorPose3 constraints.
+    """
+    graph = gtsam.NonlinearFactorGraph()
+
+    sorted_edges = sorted(relative_poses.keys())
+    first_kf = sorted_edges[0][0]
+
+    prior_noise = gtsam.noiseModel.Diagonal.Sigmas(
+        np.ones(6) * 1e-6
+    )
+
+    graph.add(
+        gtsam.PriorFactorPose3(
+            symbol("c", first_kf),
+            gtsam.Pose3(),
+            prior_noise
+        )
+    )
+
+    for start_kf, end_kf in sorted_edges:
+        rel_pose = relative_poses[(start_kf, end_kf)]
+        rel_cov = relative_covs[(start_kf, end_kf)]
+
+        noise_model = covariance_to_noise_model(rel_cov)
+
+        graph.add(
+            gtsam.BetweenFactorPose3(
+                symbol("c", start_kf),
+                symbol("c", end_kf),
+                rel_pose,
+                noise_model
+            )
+        )
+
+    return graph
+
+
+def extract_pose_graph_positions(values):
+    """
+    Extract sorted pose keys and translations from GTSAM Values.
+    """
+    keys = values.keys()
+    pose_items = []
+
+    for key in keys:
+        sym = gtsam.Symbol(key)
+        if sym.chr() == ord("c"):
+            pose = values.atPose3(key)
+            pose_items.append((sym.index(), pose_translation_np(pose)))
+
+    pose_items.sort(key=lambda x: x[0])
+
+    frame_ids = [x[0] for x in pose_items]
+    positions = np.array([x[1] for x in pose_items])
+
+    return frame_ids, positions
+
+
+def plot_pose_graph_trajectory(values, title, output_path):
+    frame_ids, positions = extract_pose_graph_positions(values)
+
+    plt.figure(figsize=(10, 8))
+
+    plt.plot(
+        positions[:, 0],
+        positions[:, 2],
+        "bo-",
+        markersize=3,
+        linewidth=1.5
+    )
+
+    plt.title(title)
+    plt.xlabel("X")
+    plt.ylabel("Z")
+    plt.axis("equal")
+    plt.grid(True)
+    plt.tight_layout()
+
+    plt.savefig(output_path, dpi=200)
+
+
+def plot_pose_graph_with_covariances(values, marginals, title, output_path):
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection="3d")
+
+    frame_ids, _ = extract_pose_graph_positions(values)
+
+    for frame_id in frame_ids:
+        key = symbol("c", frame_id)
+        pose = values.atPose3(key)
+
+        try:
+            cov = marginals.marginalCovariance(key)
+            gtsam_plot.plot_pose3_on_axes(
+                ax,
+                pose,
+                axis_length=0.5,
+                P=cov
+            )
+        except Exception:
+            gtsam_plot.plot_pose3_on_axes(
+                ax,
+                pose,
+                axis_length=0.5
+            )
+
+    ax.set_title(title)
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.view_init(elev=20, azim=-60)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+
+def keep_connected_pose_graph_component(relative_poses, relative_covs):
+    """
+    Keep only the connected chain/component starting from the first keyframe.
+    This avoids disconnected pose variables that make marginals ill-posed.
+    """
+    sorted_edges = sorted(relative_poses.keys())
+
+    if len(sorted_edges) == 0:
+        raise RuntimeError("No relative pose constraints were provided.")
+
+    connected_poses = {}
+    connected_covs = {}
+
+    reachable = {sorted_edges[0][0]}
+    changed = True
+
+    while changed:
+        changed = False
+
+        for edge in sorted_edges:
+            start_kf, end_kf = edge
+
+            if start_kf in reachable and end_kf not in reachable:
+                reachable.add(end_kf)
+                connected_poses[edge] = relative_poses[edge]
+                connected_covs[edge] = relative_covs[edge]
+                changed = True
+
+            elif start_kf in reachable and end_kf in reachable:
+                connected_poses[edge] = relative_poses[edge]
+                connected_covs[edge] = relative_covs[edge]
+
+    print(
+        f"Connected pose graph component: "
+        f"{len(connected_poses)}/{len(relative_poses)} constraints kept"
+    )
+
+    return connected_poses, connected_covs

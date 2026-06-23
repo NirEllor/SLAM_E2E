@@ -1,11 +1,5 @@
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # נדרש עבור תצוגת תלת-ממד בחלק מהגרסאות
-import gtsam
 # ex6.py
 import os
-import random
 import numpy as np
 import matplotlib.pyplot as plt
 import gtsam
@@ -265,6 +259,94 @@ def q6_1(db, output_dir="."):
 # ENTRY POINT
 # =============================================================================
 
+
+def q6_2(relative_poses, relative_covs, output_dir="."):
+    print("\n================================================================================")
+    print("SECTION 6.2: POSE GRAPH OPTIMIZATION")
+    print("================================================================================")
+
+
+    print("\n[Covariance Debug]")
+    for edge, cov in list(relative_covs.items())[:5]:
+        print("Edge:", edge)
+        print("Diagonal:", np.diag(cov))
+        print()
+
+    relative_poses, relative_covs = lib.keep_connected_pose_graph_component(
+        relative_poses,
+        relative_covs
+    )
+
+    print(
+        "First 20 edges:",
+        sorted(relative_poses.keys())[:20]
+    )
+
+    print(
+        "Last 20 edges:",
+        sorted(relative_poses.keys())[-20:]
+    )
+
+    edges = sorted(relative_poses.keys())
+
+    for (a, b), (c, d) in zip(edges[:-1], edges[1:]):
+        if b != c:
+            print(f"Gap after edge ({a}, {b}); next edge is ({c}, {d})")
+
+
+    graph = lib.build_pose_graph(relative_poses, relative_covs)
+    initial = lib.build_pose_graph_initial_estimate(relative_poses)
+
+    missing = []
+    for i in range(graph.size()):
+        factor = graph.at(i)
+        for key in factor.keys():
+            if not initial.exists(key):
+                missing.append(gtsam.Symbol(key).index())
+
+    print("Missing keys:", sorted(set(missing)))
+
+    print(f"Pose graph factors: {graph.size()}")
+    print(f"Initial poses: {initial.size()}")
+
+    initial_error = graph.error(initial)
+    print(f"Pose graph error BEFORE optimization: {initial_error:.6f}")
+
+    lib.plot_pose_graph_trajectory(
+        initial,
+        title="6.2: Initial Pose Graph Trajectory",
+        output_path=os.path.join(output_dir, "task_6_2_initial_pose_graph.png")
+    )
+
+    optimizer = gtsam.LevenbergMarquardtOptimizer(graph, initial)
+    result = optimizer.optimize()
+
+    final_error = graph.error(result)
+    print(f"Pose graph error AFTER optimization: {final_error:.6f}")
+
+    lib.plot_pose_graph_trajectory(
+        result,
+        title="6.2: Optimized Pose Graph Trajectory",
+        output_path=os.path.join(output_dir, "task_6_2_optimized_pose_graph.png")
+    )
+
+    marginals = gtsam.Marginals(graph, result)
+
+    lib.plot_pose_graph_with_covariances(
+        result,
+        marginals,
+        title="6.2: Optimized Pose Graph With Marginal Covariances",
+        output_path=os.path.join(output_dir, "task_6_2_pose_graph_covariances.png")
+    )
+
+    return result
+
+
 if __name__ == "__main__":
-    db = lib.load_or_build_db(force_rebuild=False, num_frames=lib.get_num_frames())
-    q6_1(db)
+    db = lib.load_or_build_db(
+        force_rebuild=False,
+        num_frames=lib.get_num_frames()
+    )
+
+    relative_poses, relative_covs = q6_1(db)
+    q6_2(relative_poses, relative_covs, output_dir=".")
