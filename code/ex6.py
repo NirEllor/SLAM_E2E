@@ -7,110 +7,7 @@ from gtsam import symbol
 from gtsam.utils import plot as gtsam_plot
 import van_utils as lib
 
-def symbol(char, index):
-    # הגרסה שלך מצפה לתו עצמו כסטרינג, ולא ל-ord שלו
-    return gtsam.symbol(char, index)
 
-def _solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
-    """
-    Re-solves a bundle window identically to lib.solve_bundle_window but
-    allows overriding the prior-factor noise sigma on the anchor pose.
-    Returns (graph, result, window_frames).
-    """
-    import random
-    K_gtsam   = lib.init_gtsam_stereo_calibration()
-    K_mat, P_left0, P_right0 = lib.read_cameras()
-
-    graph            = gtsam.NonlinearFactorGraph()
-    initial_estimate = gtsam.Values()
-
-    base_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
-    measurement_noise = gtsam.noiseModel.Robust.Create(
-        gtsam.noiseModel.mEstimator.Huber.Create(2.0),
-        base_noise
-    )
-
-    window_frames = list(range(start_frame, end_frame + 1))
-
-    R_start_w2c, t_start_w2c = db.camera_poses[start_frame]
-    pose_start_global = gtsam.Pose3(
-        gtsam.Rot3(R_start_w2c.T),
-        gtsam.Point3((-R_start_w2c.T @ t_start_w2c).flatten())
-    )
-
-    for f_id in window_frames:
-        pose_key = symbol("c", f_id)
-        R_f, t_f = db.camera_poses[f_id]
-        pose_f_global = gtsam.Pose3(
-            gtsam.Rot3(R_f.T),
-            gtsam.Point3((-R_f.T @ t_f).flatten())
-        )
-        pose_local = pose_start_global.between(pose_f_global)
-        initial_estimate.insert(pose_key, pose_local)
-
-        if f_id == start_frame:
-            # --- custom prior noise here ---
-            prior_noise = gtsam.noiseModel.Diagonal.Sigmas(
-                np.ones(6) * prior_sigma
-            )
-            graph.add(gtsam.PriorFactorPose3(pose_key, gtsam.Pose3(), prior_noise))
-
-    # Populate landmarks (same logic as lib.solve_bundle_window)
-    candidate_tracks = set()
-    for f_id in window_frames:
-        candidate_tracks.update(db.tracks(f_id))
-
-    guaranteed_tracks = set()
-    for f_id in window_frames:
-        ts = list(db.tracks(f_id))
-        guaranteed_tracks.update(random.sample(ts, min(15, len(ts))))
-
-    remaining  = 150 - len(guaranteed_tracks)
-    extras     = list(set(candidate_tracks) - guaranteed_tracks)
-    final_tracks = list(guaranteed_tracks) + (
-        random.sample(extras, min(remaining, len(extras))) if remaining > 0 else []
-    )
-
-    for track_id in final_tracks:
-        track_frames = [f for f in db.frames(track_id) if f in window_frames]
-        if len(track_frames) < 2:
-            continue
-        init_frame = track_frames[0]
-        obs_init   = db.observation(init_frame, track_id)
-        if not lib.valid_stereo_obs(obs_init, min_disp=1.0):
-            continue
-        X_cam = lib.triangulate_point_linear(
-            np.array([obs_init.x_left, obs_init.y]),
-            np.array([obs_init.x_right, obs_init.y]),
-            P_left0, P_right0
-        )
-        if not np.all(np.isfinite(X_cam)) or X_cam[2] <= 2.0 or X_cam[2] > 120.0:
-            continue
-
-        init_pose = initial_estimate.atPose3(symbol("c", init_frame))
-        X_local   = init_pose.transformFrom(
-            gtsam.Point3(float(X_cam[0]), float(X_cam[1]), float(X_cam[2]))
-        )
-        point_key   = symbol("q", track_id)
-        temp_factors = []
-        for f_id in track_frames:
-            obs = db.observation(f_id, track_id)
-            if lib.valid_stereo_obs(obs, min_disp=1.0):
-                temp_factors.append(
-                    gtsam.GenericStereoFactor3D(
-                        gtsam.StereoPoint2(float(obs.x_left), float(obs.x_right), float(obs.y)),
-                        measurement_noise,
-                        symbol("c", f_id), point_key, K_gtsam
-                    )
-                )
-        if len(temp_factors) < 2:
-            continue
-        initial_estimate.insert(point_key, X_local)
-        for fac in temp_factors:
-            graph.add(fac)
-
-    result = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate).optimize()
-    return graph, result, window_frames
 
 
 # =============================================================================
@@ -143,11 +40,11 @@ def q6_1(db, output_dir="."):
     for label, sigma, fname in prior_configs:
         print(f"  Prior noise σ = {sigma}  ({label}) ...", end="", flush=True)
 
-        graph_s, result_s, wf_s = _solve_bundle_with_prior_sigma(
+        graph_s, result_s, wf_s = lib.solve_bundle_with_prior_sigma(
             db, c0_idx, ck_idx, prior_sigma=sigma
         )
 
-        marginals_s = gtsam.Marginals(graph_s, result_s)
+        marginal_s = gtsam.Marginals(graph_s, result_s)
 
         fig = plt.figure(figsize=(9, 7))
         ax  = fig.add_subplot(111, projection='3d')
@@ -158,21 +55,30 @@ def q6_1(db, output_dir="."):
         )
 
         for f_id in wf_s:
-            key  = symbol('c', f_id)
+            key  = gtsam.symbol('c', f_id)
             pose = result_s.atPose3(key)
             try:
-                cov = marginals_s.marginalCovariance(key)
+                cov = marginal_s.marginalCovariance(key)
                 gtsam_plot.plot_pose3_on_axes(ax, pose, axis_length=0.3, P=cov)
             except Exception:
                 gtsam_plot.plot_pose3_on_axes(ax, pose, axis_length=0.3)
-
-        ax.set_xlabel("X axis"); ax.set_ylabel("Y axis"); ax.set_zlabel("Z axis")
-        ax.view_init(elev=20, azim=-60)
-        plt.tight_layout()
-        path = os.path.join(output_dir, fname)
-        plt.savefig(path, dpi=200, bbox_inches='tight')
-        plt.close()
-        print(f" saved → {path}")
+        if sigma == 1:
+            ax.set_xlabel("X axis"); ax.set_ylabel("Y axis"); ax.set_zlabel("Z axis")
+            ax.view_init(elev=20, azim=-60)
+            plt.tight_layout()
+            path = os.path.join(output_dir, fname)
+            plt.savefig(path, dpi=200, bbox_inches='tight')
+            plt.close()
+            print(f" saved → {path}")
+        else:
+            ax.set_xlabel("X axis"); ax.set_ylabel("Y axis"); ax.set_zlabel("Z axis")
+            ax.set_xlim(-10.0, 10.0)
+            ax.set_ylim(-10.0, 10.0)  
+            ax.view_init(elev=20, azim=-60)
+            plt.tight_layout()
+            path = os.path.join(output_dir, fname)
+            plt.savefig(path, dpi=200, bbox_inches='tight')
+            plt.close()
 
     # ── PART B: Relative pose + conditional covariance for first window ──────
     print(f"\n--- Relative pose & covariance for c0={c0_idx} → c_k={ck_idx} ---")
@@ -183,20 +89,26 @@ def q6_1(db, output_dir="."):
 
     marginals = gtsam.Marginals(graph, result)
 
-    key_c0 = symbol('c', c0_idx)
-    key_ck = symbol('c', ck_idx)
+    key_c0 = gtsam.symbol('c', c0_idx)
+    key_ck = gtsam.symbol('c', ck_idx)
 
-    # שליפה בטוחה של הבלוקים הייעודיים מתוך ה-Joint Marginal למניעת שגיאות מיון פנימי
+    # שליפת המטריצה המשותפת המלאה כ-NumPy Array בגודל 12x12
     joint_keys = gtsam.KeyVector([key_c0, key_ck])
-    joint_marginal = marginals.jointMarginalCovariance(joint_keys)
+    joint_cov_matrix = marginals.jointMarginalCovariance(joint_keys).fullMatrix()
     
-    Sigma_00 = joint_marginal.at(key_c0, key_c0)
-    Sigma_0k = joint_marginal.at(key_c0, key_ck)
-    Sigma_kk = joint_marginal.at(key_ck, key_ck)
+    # חילוץ תתי-הבלוקים (כל פוזה היא בגודל 6x6)
+    Sigma_00 = joint_cov_matrix[0:6, 0:6]
+    Sigma_0k = joint_cov_matrix[0:6, 6:12]
+    Sigma_k0 = joint_cov_matrix[6:12, 0:6]
+    Sigma_kk = joint_cov_matrix[6:12, 6:12]
 
-    # חישוב הטרנספורמציה המותנית באמצעות Schur Complement
-    Sigma_rel    = Sigma_kk - Sigma_0k.T @ np.linalg.inv(Sigma_00) @ Sigma_0k
+    # חישוב ה-Schur Complement במערכת הקואורדינטות הגלובלית
+    Sigma_conditional_global = Sigma_kk - Sigma_k0 @ np.linalg.inv(Sigma_00) @ Sigma_0k
+    
+    # מעבר למערכת הצירים המקומית (Body Frame) בעזרת ה-Adjoint Map של הפוזה היחסית
     relative_pose = bundle_result["relative_pose"]
+    Ad_k = relative_pose.AdjointMap()
+    Sigma_rel = Ad_k @ Sigma_conditional_global @ Ad_k.T
 
     print(f"\nRelative Pose between keyframes c{c0_idx} and c{ck_idx}:")
     print(relative_pose)
@@ -221,19 +133,26 @@ def q6_1(db, output_dir="."):
             g, r = br["graph"], br["result"]
 
             margs   = gtsam.Marginals(g, r)
-            k_sf   = symbol('c', sf)
-            k_ef   = symbol('c', ef)
+            k_sf   = gtsam.symbol('c', sf)
+            k_ef   = gtsam.symbol('c', ef)
             
+            # שליפת המטריצה המשותפת המלאה עבור זוג הפריים הנוכחי
             jk     = gtsam.KeyVector([k_sf, k_ef])
-            jc_marginal = margs.jointMarginalCovariance(jk)
+            jc_matrix = margs.jointMarginalCovariance(jk).fullMatrix()
 
-            # שליפה בטוחה לפי מפתח גם בלולאה הכללית
-            S00 = jc_marginal.at(k_sf, k_sf)
-            S0k = jc_marginal.at(k_sf, k_ef)
-            Skk = jc_marginal.at(k_ef, k_ef)
+            # חילוץ הבלוקים בצורה בטוחה מהמטריצה
+            S00 = jc_matrix[0:6, 0:6]
+            S0k = jc_matrix[0:6, 6:12]
+            Sk0 = jc_matrix[6:12, 0:6]
+            Skk = jc_matrix[6:12, 6:12]
 
-            rel_cov  = Skk - S0k.T @ np.linalg.inv(S00) @ S0k
+            # חישוב Schur Complement
+            S_cond_global = Skk - Sk0 @ np.linalg.inv(S00) @ S0k
+            
+            # הטלה למערכת הצירים המקומית של המצלמה הנוכחית
             rel_pose = br["relative_pose"]
+            Ad_curr = rel_pose.AdjointMap()
+            rel_cov = Ad_curr @ S_cond_global @ Ad_curr.T
 
             relative_poses[(sf, ef)] = rel_pose
             relative_covs [(sf, ef)] = rel_cov
@@ -349,4 +268,4 @@ if __name__ == "__main__":
     )
 
     relative_poses, relative_covs = q6_1(db)
-    q6_2(relative_poses, relative_covs, output_dir=".")
+    # q6_2(relative_poses, relative_covs, output_dir=".")

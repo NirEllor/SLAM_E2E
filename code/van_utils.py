@@ -2159,3 +2159,107 @@ def keep_connected_pose_graph_component(relative_poses, relative_covs):
     )
 
     return connected_poses, connected_covs
+
+
+
+def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
+    """
+    Re-solves a bundle window identically to lib.solve_bundle_window but
+    allows overriding the prior-factor noise sigma on the anchor pose.
+    Returns (graph, result, window_frames).
+    """
+    import random
+    K_gtsam   = init_gtsam_stereo_calibration()
+    K_mat, P_left0, P_right0 = read_cameras()
+
+    graph            = gtsam.NonlinearFactorGraph()
+    initial_estimate = gtsam.Values()
+
+    base_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
+    measurement_noise = gtsam.noiseModel.Robust.Create(
+        gtsam.noiseModel.mEstimator.Huber.Create(2.0),
+        base_noise
+    )
+
+    window_frames = list(range(start_frame, end_frame + 1))
+
+    R_start_w2c, t_start_w2c = db.camera_poses[start_frame]
+    pose_start_global = gtsam.Pose3(
+        gtsam.Rot3(R_start_w2c.T),
+        gtsam.Point3((-R_start_w2c.T @ t_start_w2c).flatten())
+    )
+
+    for f_id in window_frames:
+        pose_key = symbol("c", f_id)
+        R_f, t_f = db.camera_poses[f_id]
+        pose_f_global = gtsam.Pose3(
+            gtsam.Rot3(R_f.T),
+            gtsam.Point3((-R_f.T @ t_f).flatten())
+        )
+        pose_local = pose_start_global.between(pose_f_global)
+        initial_estimate.insert(pose_key, pose_local)
+
+        if f_id == start_frame:
+            # --- custom prior noise here ---
+            prior_noise = gtsam.noiseModel.Diagonal.Sigmas(
+                np.ones(6) * prior_sigma
+            )
+            graph.add(gtsam.PriorFactorPose3(pose_key, gtsam.Pose3(), prior_noise))
+
+    # Populate landmarks (same logic as solve_bundle_window)
+    candidate_tracks = set()
+    for f_id in window_frames:
+        candidate_tracks.update(db.tracks(f_id))
+
+    guaranteed_tracks = set()
+    for f_id in window_frames:
+        ts = list(db.tracks(f_id))
+        guaranteed_tracks.update(random.sample(ts, min(15, len(ts))))
+
+    remaining  = 150 - len(guaranteed_tracks)
+    extras     = list(set(candidate_tracks) - guaranteed_tracks)
+    final_tracks = list(guaranteed_tracks) + (
+        random.sample(extras, min(remaining, len(extras))) if remaining > 0 else []
+    )
+
+    for track_id in final_tracks:
+        track_frames = [f for f in db.frames(track_id) if f in window_frames]
+        if len(track_frames) < 2:
+            continue
+        init_frame = track_frames[0]
+        obs_init   = db.observation(init_frame, track_id)
+        if not valid_stereo_obs(obs_init, min_disp=1.0):
+            continue
+        X_cam = triangulate_point_linear(
+            np.array([obs_init.x_left, obs_init.y]),
+            np.array([obs_init.x_right, obs_init.y]),
+            P_left0, P_right0
+        )
+        if not np.all(np.isfinite(X_cam)) or X_cam[2] <= 2.0 or X_cam[2] > 120.0:
+            continue
+
+        init_pose = initial_estimate.atPose3(symbol("c", init_frame))
+        X_local   = init_pose.transformFrom(
+            gtsam.Point3(float(X_cam[0]), float(X_cam[1]), float(X_cam[2]))
+        )
+        point_key   = symbol("q", track_id)
+        temp_factors = []
+        for f_id in track_frames:
+            obs = db.observation(f_id, track_id)
+            if valid_stereo_obs(obs, min_disp=1.0):
+                temp_factors.append(
+                    gtsam.GenericStereoFactor3D(
+                        gtsam.StereoPoint2(float(obs.x_left), float(obs.x_right), float(obs.y)),
+                        measurement_noise,
+                        symbol("c", f_id), point_key, K_gtsam
+                    )
+                )
+        if len(temp_factors) < 2:
+            continue
+        initial_estimate.insert(point_key, X_local)
+        for fac in temp_factors:
+            graph.add(fac)
+
+    result = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate).optimize()
+    return graph, result, window_frames
+
