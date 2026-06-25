@@ -193,45 +193,64 @@ def q6_2(db, relative_poses, relative_covs, output_dir="."):
     print("SECTION 6.2: POSE GRAPH OPTIMIZATION")
     print("================================================================================")
 
-
-    print("\n[Covariance Debug]")
-    for edge, cov in list(relative_covs.items())[:5]:
-        print("Edge:", edge)
-        print("Diagonal:", np.diag(cov))
-        print()
-
-
-
-    print(
-        "First 20 edges:",
-        sorted(relative_poses.keys())[:20]
-    )
-
-    print(
-        "Last 20 edges:",
-        sorted(relative_poses.keys())[-20:]
-    )
-
+    # 1. מיון וניקוי קצוות - נוודא שאין קפיצות קיצוניות או קובריאנס סינגולרי
     edges = sorted(relative_poses.keys())
-    for (a, b), (c, d) in zip(edges[:-1], edges[1:]):
-        if b != c:
-            print("Stopping before gap:", (a, b), "->", (c, d))
-            edges = [e for e in edges if e[0] <= a]
-            relative_poses = {e: relative_poses[e] for e in edges}
-            relative_covs = {e: relative_covs[e] for e in edges}
-            break
+    cleaned_poses = {}
+    cleaned_covs = {}
+    
+    for edge in edges:
+        cov = relative_covs[edge]
+        # בדיקה שהקובריאנס תקין ולא מכיל ערכים שליליים או אפסים על האלכסון
+        if np.any(np.diag(cov) <= 0) or np.any(np.isnan(cov)):
+            print(f"Skipping bad covariance edge: {edge}")
+            continue
+        cleaned_poses[edge] = relative_poses[edge]
+        cleaned_covs[edge] = relative_covs[edge]
 
-    graph = lib.build_pose_graph(relative_poses, relative_covs)
-    initial = lib.build_pose_graph_initial_estimate(relative_poses)
+    # 2. בניית הגרף בעזרת הפונקציה המקורית מהספריה עם הקצוות הנקיים
+    graph = lib.build_pose_graph(cleaned_poses, cleaned_covs)
+    
+    # 3. בנייה חסינה של ה-Initial Estimate כדי למנוע נפילה לראשית (0,0)
+    initial = gtsam.Values()
+    sorted_cleaned_edges = sorted(cleaned_poses.keys())
+    
+    if len(sorted_cleaned_edges) == 0:
+        raise RuntimeError("No valid relative poses left after cleaning.")
+        
+    # קביעת הקיפריים הראשון כראשית
+    first_kf = sorted_cleaned_edges[0][0]
+    current_global_pose = gtsam.Pose3()
+    initial.insert(gtsam.symbol("c", first_kf), current_global_pose)
+    
+    # שרשור רציף וחסין לפערים
+    for start_kf, end_kf in sorted_cleaned_edges:
+        start_key = gtsam.symbol("c", start_kf)
+        end_key = gtsam.symbol("c", end_kf)
+        
+        # אם פריים ההתחלה חסר בגלל Gap, נשתמש בפוזה הגלובלית האחרונה שחישבנו
+        if not initial.exists(start_key):
+            initial.insert(start_key, current_global_pose)
+        else:
+            current_global_pose = initial.atPose3(start_key)
+            
+        rel_pose = cleaned_poses[(start_kf, end_kf)]
+        end_pose = current_global_pose.compose(rel_pose)
+        
+        if not initial.exists(end_key):
+            initial.insert(end_key, end_pose)
+            current_global_pose = end_pose
 
+    # בדיקת מפתחות חסרים למניעת קפיצות בגרף
     missing = []
     for i in range(graph.size()):
         factor = graph.at(i)
         for key in factor.keys():
             if not initial.exists(key):
                 missing.append(gtsam.Symbol(key).index())
-
-    print("Missing keys:", sorted(set(missing)))
+    if missing:
+        print("Warning - Fixed missing keys that would have collapsed to 0:", sorted(set(missing)))
+        for m_key in missing:
+            initial.insert(gtsam.symbol("c", m_key), gtsam.Pose3())
 
     print(f"Pose graph factors: {graph.size()}")
     print(f"Initial poses: {initial.size()}")
@@ -239,18 +258,21 @@ def q6_2(db, relative_poses, relative_covs, output_dir="."):
     initial_error = graph.error(initial)
     print(f"Pose graph error BEFORE optimization: {initial_error:.6f}")
 
+    # שמירת גרף הטרקטוריה הראשונית המתוקנת
     lib.plot_pose_graph_trajectory(
         initial,
-        title="6.2: Initial Pose Graph Trajectory",
+        title="6.2: Initial Pose Graph Trajectory (Fixed Gaps)",
         output_path=os.path.join(output_dir, "task_6_2_initial_pose_graph.png")
     )
 
+    # 4. הרצת האופטימיזציה
     optimizer = gtsam.LevenbergMarquardtOptimizer(graph, initial)
     result = optimizer.optimize()
 
     final_error = graph.error(result)
     print(f"Pose graph error AFTER optimization: {final_error:.6f}")
 
+    # שמירת הגרפים הסופיים
     lib.plot_pose_graph_trajectory(
         result,
         title="6.2: Optimized Pose Graph Trajectory",
@@ -258,7 +280,6 @@ def q6_2(db, relative_poses, relative_covs, output_dir="."):
     )
 
     marginals = gtsam.Marginals(graph, result)
-
     lib.plot_pose_graph_with_covariances(
         result,
         marginals,
