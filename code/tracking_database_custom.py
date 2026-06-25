@@ -57,12 +57,17 @@ class TrackingDB:
     # ==========================
 
     def update_tracks(self, idx, temporal_matches, prev_stereo, curr_stereo, prev_data, curr_data):
-        """
-        Atomically ingests frame-to-frame temporal matches and populates internal tracking maps.
-        Shields loop indexes and helper extractions entirely from the execution scripts.
-        """
         import van_utils as lib
-        
+
+        debug = (idx == 2853)
+
+        if debug:
+            print("update_tracks input temporal_matches:", len(temporal_matches))
+            added = 0
+            skipped_obs = 0
+            reused_track = 0
+            created_track = 0
+
         for match in temporal_matches:
             prev_feature = match.queryIdx
             curr_feature = match.trainIdx
@@ -71,18 +76,34 @@ class TrackingDB:
             curr_obs = lib.get_feature_observation(curr_data, curr_feature, curr_stereo)
 
             if prev_obs is None or curr_obs is None:
+                if debug:
+                    skipped_obs += 1
                 continue
 
-            # Case A: Feature was already registered in a track during the previous frame
             if self.has_feature(idx - 1, prev_feature):
                 track_id = self.get_track_of_feature(idx - 1, prev_feature)
-            # Case B: New feature sequence detected; initialize a brand-new track
+                if debug:
+                    reused_track += 1
             else:
                 track_id = self.create_track()
                 lib.add_feature_to_db(self, idx - 1, prev_feature, track_id, prev_obs)
+                if debug:
+                    created_track += 1
 
-            # Append current frame observation to the running track link
             lib.add_feature_to_db(self, idx, curr_feature, track_id, curr_obs)
+
+            if debug:
+                added += 1
+
+        if debug:
+            print("update_tracks skipped missing stereo obs:", skipped_obs)
+            print("update_tracks reused existing tracks:", reused_track)
+            print("update_tracks created new tracks:", created_track)
+            print("update_tracks added current observations:", added)
+            print(
+                "shared tracks after update:",
+                len(set(self.tracks(2852)) & set(self.tracks(2853)))
+            )
 
     # ==========================
     # construction

@@ -1185,8 +1185,6 @@ def valid_stereo_obs(obs, min_disp=1.0):
     return disparity >= min_disp
 
 
-def pose_translation_np(pose):
-    return np.array(pose.translation()).reshape(3)
 
 
 def choose_keyframes(db, distance_threshold=2.5, max_gap=20, min_gap=5):
@@ -1235,6 +1233,7 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
 
     window_frames = list(range(start_frame, end_frame + 1))
 
+
     R_start_w2c, t_start_w2c = db.camera_poses[start_frame]
     pose_start_global = gtsam.Pose3(
         gtsam.Rot3(R_start_w2c.T), 
@@ -1262,29 +1261,44 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
             )
             graph.add(anchor_factor)
 
+    rng = random.Random(0)
+
     candidate_tracks = set()
     for f_id in window_frames:
         candidate_tracks.update(db.tracks(f_id))
-    candidate_tracks = list(candidate_tracks)
 
     guaranteed_tracks = set()
     for f_id in window_frames:
-        tracks_in_frame = list(db.tracks(f_id))
-        if len(tracks_in_frame) > 0:
-            sampled = random.sample(tracks_in_frame, min(15, len(tracks_in_frame)))
-            guaranteed_tracks.update(sampled)
+        ts = list(db.tracks(f_id))
+        guaranteed_tracks.update(rng.sample(ts, min(15, len(ts))))
 
-    remaining_slots = max_tracks_per_window - len(guaranteed_tracks)
-    all_candidates = list(set(candidate_tracks) - guaranteed_tracks)
+    # Guarantee connectivity between every consecutive frame pair
+    for a, b in zip(window_frames[:-1], window_frames[1:]):
+        shared_tracks = list(set(db.tracks(a)) & set(db.tracks(b)))
 
-    if remaining_slots > 0 and len(all_candidates) > 0:
-        additional_tracks = random.sample(all_candidates, min(remaining_slots, len(all_candidates)))
-        final_tracks_to_optimize = list(guaranteed_tracks) + additional_tracks
-    else:
-        final_tracks_to_optimize = list(guaranteed_tracks)
+        if len(shared_tracks) > 0:
+            guaranteed_tracks.update(
+                rng.sample(shared_tracks, min(15, len(shared_tracks)))
+            )
+        else:
+            print(f"[Warning] No shared tracks between {a} and {b}")
+
+    remaining = max_tracks_per_window - len(guaranteed_tracks)
+    extras = list(candidate_tracks - guaranteed_tracks)
+
+    final_tracks_to_optimize = list(guaranteed_tracks)
+
+    if remaining > 0:
+        final_tracks_to_optimize += rng.sample(
+            extras,
+            min(remaining, len(extras))
+        )
+
 
     optimized_landmark_ids = []
     pose_factor_count = {f_id: 0 for f_id in window_frames}
+
+
 
     for track_id in final_tracks_to_optimize:
         track_frames = [f for f in db.frames(track_id) if f in window_frames]
@@ -1310,6 +1324,8 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
 
         if X_cam[2] <= 2.0 or X_cam[2] > 120.0:
             continue
+
+
 
         init_pose = initial_estimate.atPose3(symbol("c", init_frame))
         X_local = init_pose.transformFrom(
@@ -1347,15 +1363,28 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
 
         for factor in temp_factors:
             graph.add(factor)
-            c_key = factor.keys()[0]
-            f_id = gtsam.Symbol(c_key).index()
-            if f_id in pose_factor_count:
-                pose_factor_count[f_id] += 1
 
-    disconnected = [
-        f_id for f_id in window_frames
-        if f_id != start_frame and pose_factor_count[f_id] == 0
-    ]
+            for key in factor.keys():
+                s = gtsam.Symbol(key)
+
+                if chr(s.chr()) == "c":
+                    f_id = s.index()
+
+                    if f_id in pose_factor_count:
+                        pose_factor_count[f_id] += 1
+
+    bad_counts = {
+        f_id: count
+        for f_id, count in pose_factor_count.items()
+        if f_id != start_frame and count == 0
+    }
+
+    if bad_counts:
+        print(f"\nBundle {start_frame}->{end_frame}")
+        print("Disconnected poses:", bad_counts)
+
+    disconnected = list(bad_counts.keys())
+
     if disconnected:
         raise RuntimeError(
             f"Disconnected poses in bundle {start_frame}->{end_frame}: {disconnected}"
@@ -1363,6 +1392,8 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
 
     print(f"Graph size before optimization: {graph.size()}")
     print(f"Initial estimate size: {initial_estimate.size()}")
+
+
 
     initial_error = graph.error(initial_estimate)
 
@@ -1575,6 +1606,8 @@ def build_data(num_frames=10):
     for idx in range(1, num_frames):
         print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1}")
 
+
+
         curr_data = run_single_pair(
             idx=idx,
             display=False,
@@ -1591,6 +1624,8 @@ def build_data(num_frames=10):
             m for m, n in knn_matches
             if m.distance < 0.7 * n.distance
         ]
+        if idx == 2853:
+            print("Temporal matches:", len(temporal_matches))
 
         try:
             correspondences = build_pnp_correspondences(
@@ -1598,6 +1633,8 @@ def build_data(num_frames=10):
                 curr_data,
                 temporal_matches
             )
+            if idx == 2853:
+                print("PnP correspondences:", len(correspondences))
 
             if len(correspondences) < 4:
                 raise RuntimeError("Not enough correspondences for PnP-RANSAC.")
@@ -1650,6 +1687,8 @@ def build_data(num_frames=10):
 
                 if len(inliers) > len(best_inliers):
                     best_inliers = inliers
+                    if idx == 2853:
+                        print("RANSAC inliers:", len(best_inliers))
                     best_outliers = outliers
                     best_R = R_candidate
                     best_t = tvec
@@ -1961,69 +2000,57 @@ def covariance_to_noise_model(cov, min_sigma=1e-6):
 
 
 def build_pose_graph_initial_estimate(relative_poses):
-    """
-    Initialize all keyframe poses by chaining relative poses.
-    Handles occasional gaps caused by failed bundle windows.
-    """
     initial = gtsam.Values()
 
     sorted_edges = sorted(relative_poses.keys())
     if len(sorted_edges) == 0:
         raise RuntimeError("No relative poses were provided.")
 
-    first_kf = sorted_edges[0][0]
-
     current_pose = gtsam.Pose3()
+    first_kf = sorted_edges[0][0]
     initial.insert(symbol("c", first_kf), current_pose)
-
-    last_known_kf = first_kf
-    last_known_pose = current_pose
 
     for start_kf, end_kf in sorted_edges:
         start_key = symbol("c", start_kf)
         end_key = symbol("c", end_kf)
 
-        if initial.exists(start_key):
-            start_pose = initial.atPose3(start_key)
-        else:
-            # Fallback for a disconnected/gapped edge
-            start_pose = last_known_pose
-            initial.insert(start_key, start_pose)
+        if not initial.exists(start_key):
+            # New disconnected component.
+            initial.insert(start_key, gtsam.Pose3())
 
+        start_pose = initial.atPose3(start_key)
         rel_pose = relative_poses[(start_kf, end_kf)]
         end_pose = start_pose.compose(rel_pose)
 
         if not initial.exists(end_key):
             initial.insert(end_key, end_pose)
 
-        last_known_kf = end_kf
-        last_known_pose = end_pose
-
     return initial
 
 
 def build_pose_graph(relative_poses, relative_covs):
-    """
-    Build Pose Graph from relative keyframe constraints.
-    Nodes: keyframe poses.
-    Edges: BetweenFactorPose3 constraints.
-    """
     graph = gtsam.NonlinearFactorGraph()
 
     sorted_edges = sorted(relative_poses.keys())
-    first_kf = sorted_edges[0][0]
+    if len(sorted_edges) == 0:
+        raise RuntimeError("No relative pose constraints were provided.")
 
-    prior_noise = gtsam.noiseModel.Diagonal.Sigmas(
+    component_starts = find_component_start_keyframes(relative_poses)
+
+    strong_prior_noise = gtsam.noiseModel.Diagonal.Sigmas(
         np.ones(6) * 1e-6
     )
 
-    graph.add(
-        gtsam.PriorFactorPose3(
-            symbol("c", first_kf),
-            gtsam.Pose3(),
-            prior_noise
+    # Anchor every disconnected component.
+    # This does NOT connect components; it only makes marginals well-defined.
+    for kf in component_starts:
+        graph.add(
+            gtsam.PriorFactorPose3(
+                symbol("c", kf),
+                gtsam.Pose3(),
+                strong_prior_noise
+            )
         )
-    )
 
     for start_kf, end_kf in sorted_edges:
         rel_pose = relative_poses[(start_kf, end_kf)]
@@ -2041,6 +2068,8 @@ def build_pose_graph(relative_poses, relative_covs):
         )
 
     return graph
+
+
 
 
 def extract_pose_graph_positions(values):
@@ -2087,80 +2116,106 @@ def plot_pose_graph_trajectory(values, title, output_path):
     plt.savefig(output_path, dpi=200)
 
 
-def plot_pose_graph_with_covariances(values, marginals, title, output_path):
-    fig = plt.figure(figsize=(10, 8))
+def plot_pose_graph_with_covariances(values,
+                                     marginals,
+                                     title,
+                                     output_path,
+                                     covariance_step=10,
+                                     covariance_scale=1.0):
+    """
+    Plot all optimized pose locations and visualize final marginal covariances.
+
+    We plot the full keyframe trajectory as a dashed 3D curve.
+    To keep the plot readable, covariance is shown only every few keyframes,
+    using the translation covariance block Σ_xyz.
+    """
+
+    frame_ids, positions = extract_pose_graph_positions(values)
+
+    fig = plt.figure(figsize=(10, 7))
     ax = fig.add_subplot(111, projection="3d")
 
-    frame_ids, _ = extract_pose_graph_positions(values)
+    # Full optimized keyframe trajectory
+    ax.plot(
+        positions[:, 0],
+        positions[:, 1],
+        positions[:, 2],
+        linestyle="--",
+        marker=".",
+        markersize=3,
+        linewidth=1.0,
+        label="Optimized keyframes"
+    )
 
-    for frame_id in frame_ids:
+    # Plot covariance markers every few poses
+    for frame_id in frame_ids[::covariance_step]:
         key = symbol("c", frame_id)
+
+        if not values.exists(key):
+            continue
+
         pose = values.atPose3(key)
+        p = pose_translation_np(pose)
 
         try:
-            cov = marginals.marginalCovariance(key)
-            gtsam_plot.plot_pose3_on_axes(
-                ax,
-                pose,
-                axis_length=0.5,
-                P=cov
-            )
-        except Exception:
-            gtsam_plot.plot_pose3_on_axes(
-                ax,
-                pose,
-                axis_length=0.5
+            cov6 = marginals.marginalCovariance(key)
+
+            # Use only translation covariance, not full Pose3 covariance
+            cov_xyz = cov6[3:6, 3:6]
+            cov_xyz = 0.5 * (cov_xyz + cov_xyz.T)
+
+            eigvals, eigvecs = np.linalg.eigh(cov_xyz)
+            eigvals = np.maximum(eigvals, 0.0)
+
+            # 1-sigma ellipsoid radii, scaled for visualization
+            radii = covariance_scale * np.sqrt(eigvals)
+
+            # Avoid huge unreadable ellipsoids
+            radii = np.minimum(radii, 20.0)
+
+            u = np.linspace(0, 2 * np.pi, 18)
+            v = np.linspace(0, np.pi, 9)
+
+            xs = radii[0] * np.outer(np.cos(u), np.sin(v))
+            ys = radii[1] * np.outer(np.sin(u), np.sin(v))
+            zs = radii[2] * np.outer(np.ones_like(u), np.cos(v))
+
+            ellipsoid = np.stack(
+                [xs.reshape(-1), ys.reshape(-1), zs.reshape(-1)],
+                axis=0
             )
 
+            rotated = eigvecs @ ellipsoid
+
+            X = rotated[0, :].reshape(xs.shape) + p[0]
+            Y = rotated[1, :].reshape(ys.shape) + p[1]
+            Z = rotated[2, :].reshape(zs.shape) + p[2]
+
+            ax.plot_wireframe(
+                X,
+                Y,
+                Z,
+                linewidth=0.4,
+                alpha=0.45
+            )
+
+        except Exception as e:
+            print(f"[Warning] Could not plot covariance for frame {frame_id}: {e}")
+
     ax.set_title(title)
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
+    ax.set_xlabel("X axis")
+    ax.set_ylabel("Y axis")
+    ax.set_zlabel("Z axis")
+    ax.grid(True)
+    ax.legend()
+
     ax.view_init(elev=20, azim=-60)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
+    plt.close()
 
-def keep_connected_pose_graph_component(relative_poses, relative_covs):
-    """
-    Keep only the connected chain/component starting from the first keyframe.
-    This avoids disconnected pose variables that make marginals ill-posed.
-    """
-    sorted_edges = sorted(relative_poses.keys())
-
-    if len(sorted_edges) == 0:
-        raise RuntimeError("No relative pose constraints were provided.")
-
-    connected_poses = {}
-    connected_covs = {}
-
-    reachable = {sorted_edges[0][0]}
-    changed = True
-
-    while changed:
-        changed = False
-
-        for edge in sorted_edges:
-            start_kf, end_kf = edge
-
-            if start_kf in reachable and end_kf not in reachable:
-                reachable.add(end_kf)
-                connected_poses[edge] = relative_poses[edge]
-                connected_covs[edge] = relative_covs[edge]
-                changed = True
-
-            elif start_kf in reachable and end_kf in reachable:
-                connected_poses[edge] = relative_poses[edge]
-                connected_covs[edge] = relative_covs[edge]
-
-    print(
-        f"Connected pose graph component: "
-        f"{len(connected_poses)}/{len(relative_poses)} constraints kept"
-    )
-
-    return connected_poses, connected_covs
-
-
+    print(f"Saved: {output_path}")
 
 def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
     """
@@ -2216,6 +2271,7 @@ def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
         ts = list(db.tracks(f_id))
         guaranteed_tracks.update(random.sample(ts, min(15, len(ts))))
 
+
     remaining  = 150 - len(guaranteed_tracks)
     extras     = list(set(candidate_tracks) - guaranteed_tracks)
     final_tracks = list(guaranteed_tracks) + (
@@ -2263,3 +2319,188 @@ def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
     result = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate).optimize()
     return graph, result, window_frames
 
+
+def find_component_start_keyframes(relative_poses):
+    edges = sorted(relative_poses.keys())
+
+    if len(edges) == 0:
+        return []
+
+    component_starts = [edges[0][0]]
+
+    for (a, b), (c, d) in zip(edges[:-1], edges[1:]):
+        if b != c:
+            component_starts.append(c)
+
+    return component_starts
+
+
+def debug_target_frame_geometry(db, start_frame=2840, end_frame=2860,
+                                target_frame=2860,
+                                max_tracks_per_window=150,
+                                output_dir="./outputs"):
+    os.makedirs(output_dir, exist_ok=True)
+
+    K_mat, P_left0, P_right0 = read_cameras()
+    fx = K_mat[0, 0]
+    baseline = init_gtsam_stereo_calibration().baseline()
+
+    window_frames = list(range(start_frame, end_frame + 1))
+
+    # Same selection logic as solve_bundle_window
+    candidate_tracks = set()
+    for f_id in window_frames:
+        candidate_tracks.update(db.tracks(f_id))
+    candidate_tracks = list(candidate_tracks)
+
+    guaranteed_tracks = set()
+    rng = random.Random(0)
+
+    for f_id in window_frames:
+        tracks_in_frame = list(db.tracks(f_id))
+        if len(tracks_in_frame) > 0:
+            sampled = rng.sample(tracks_in_frame, min(15, len(tracks_in_frame)))
+            guaranteed_tracks.update(sampled)
+
+    remaining_slots = max_tracks_per_window - len(guaranteed_tracks)
+    all_candidates = list(set(candidate_tracks) - guaranteed_tracks)
+
+    if remaining_slots > 0 and len(all_candidates) > 0:
+        additional_tracks = rng.sample(all_candidates, min(remaining_slots, len(all_candidates)))
+        final_tracks = list(guaranteed_tracks) + additional_tracks
+    else:
+        final_tracks = list(guaranteed_tracks)
+
+    rows = []
+
+    for track_id in final_tracks:
+        track_frames = [f for f in db.frames(track_id) if f in window_frames]
+
+        if target_frame not in track_frames:
+            continue
+
+        valid_frames = []
+        for f in track_frames:
+            obs = db.observation(f, track_id)
+            if valid_stereo_obs(obs, min_disp=1.0):
+                valid_frames.append(f)
+
+        obs_t = db.observation(target_frame, track_id)
+
+        if not valid_stereo_obs(obs_t, min_disp=1.0):
+            continue
+
+        p_left = np.array([obs_t.x_left, obs_t.y])
+        p_right = np.array([obs_t.x_right, obs_t.y])
+
+        X_cam = triangulate_point_linear(
+            p_left,
+            p_right,
+            P_left0,
+            P_right0
+        )
+
+        disparity = obs_t.x_left - obs_t.x_right
+        stereo_depth_formula = fx * baseline / disparity
+
+        rows.append({
+            "track_id": track_id,
+            "num_frames_in_window": len(track_frames),
+            "num_valid_obs_in_window": len(valid_frames),
+            "x": float(obs_t.x_left),
+            "y": float(obs_t.y),
+            "x_right": float(obs_t.x_right),
+            "disparity": float(disparity),
+            "depth_triangulated": float(X_cam[2]) if np.all(np.isfinite(X_cam)) else np.nan,
+            "depth_formula": float(stereo_depth_formula),
+            "valid_frames": valid_frames,
+        })
+
+    if len(rows) == 0:
+        print("No valid target-frame observations found.")
+        return rows
+
+    depths = np.array([r["depth_triangulated"] for r in rows], dtype=float)
+    xs = np.array([r["x"] for r in rows], dtype=float)
+    ys = np.array([r["y"] for r in rows], dtype=float)
+    valid_counts = np.array([r["num_valid_obs_in_window"] for r in rows], dtype=float)
+    disparities = np.array([r["disparity"] for r in rows], dtype=float)
+
+    finite_depths = depths[np.isfinite(depths)]
+
+    print("\n==============================")
+    print(f"Debug geometry for frame {target_frame}")
+    print(f"Window: {start_frame}->{end_frame}")
+    print("==============================")
+    print(f"Tracks selected for BA: {len(final_tracks)}")
+    print(f"Tracks reaching target frame and valid: {len(rows)}")
+
+    print("\nDepth statistics:")
+    print(f"  min    = {np.min(finite_depths):.3f}")
+    print(f"  median = {np.median(finite_depths):.3f}")
+    print(f"  mean   = {np.mean(finite_depths):.3f}")
+    print(f"  max    = {np.max(finite_depths):.3f}")
+    print(f"  >80m   = {np.sum(finite_depths > 80)}")
+    print(f"  >120m  = {np.sum(finite_depths > 120)}")
+
+    print("\nDisparity statistics:")
+    print(f"  min    = {np.min(disparities):.3f}")
+    print(f"  median = {np.median(disparities):.3f}")
+    print(f"  mean   = {np.mean(disparities):.3f}")
+    print(f"  max    = {np.max(disparities):.3f}")
+
+    print("\nImage spread:")
+    print(f"  x range = [{np.min(xs):.1f}, {np.max(xs):.1f}], std={np.std(xs):.1f}")
+    print(f"  y range = [{np.min(ys):.1f}, {np.max(ys):.1f}], std={np.std(ys):.1f}")
+
+    print("\nValid observations per track:")
+    print(f"  min    = {np.min(valid_counts):.0f}")
+    print(f"  median = {np.median(valid_counts):.0f}")
+    print(f"  mean   = {np.mean(valid_counts):.2f}")
+    print(f"  max    = {np.max(valid_counts):.0f}")
+
+    print("\nWorst shallow/low-disparity tracks:")
+    rows_sorted = sorted(rows, key=lambda r: r["disparity"])
+    for r in rows_sorted[:10]:
+        print(
+            f"track={r['track_id']}, "
+            f"valid_obs={r['num_valid_obs_in_window']}, "
+            f"disp={r['disparity']:.3f}, "
+            f"depth={r['depth_triangulated']:.3f}, "
+            f"pixel=({r['x']:.1f},{r['y']:.1f}), "
+            f"frames={r['valid_frames']}"
+        )
+
+    # Plot pixel spread on image
+    img_left, _ = read_images(target_frame)
+    plt.figure(figsize=(12, 5))
+    plt.imshow(img_left, cmap="gray")
+    plt.scatter(xs, ys, s=20)
+    plt.title(f"Frame {target_frame}: selected BA observations")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"debug_frame_{target_frame}_image_spread.png"), dpi=200)
+    plt.close()
+
+    # Plot depth histogram
+    plt.figure(figsize=(8, 5))
+    plt.hist(finite_depths, bins=30)
+    plt.title(f"Frame {target_frame}: depth histogram")
+    plt.xlabel("Triangulated depth Z [m]")
+    plt.ylabel("Count")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"debug_frame_{target_frame}_depth_hist.png"), dpi=200)
+    plt.close()
+
+    # Plot valid observations histogram
+    plt.figure(figsize=(8, 5))
+    plt.hist(valid_counts, bins=range(1, int(np.max(valid_counts)) + 2))
+    plt.title(f"Frame {target_frame}: valid observations per track")
+    plt.xlabel("Valid observations in window")
+    plt.ylabel("Track count")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"debug_frame_{target_frame}_valid_obs_hist.png"), dpi=200)
+    plt.close()
+
+    return rows

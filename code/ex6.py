@@ -28,6 +28,15 @@ def q6_1(db, output_dir="."):
     print(f"Total keyframes : {len(keyframes)}")
     print(f"First two       : c0={c0_idx}, c_k={ck_idx}")
 
+    # lib.debug_target_frame_geometry(
+    #     db,
+    #     start_frame=2840,
+    #     end_frame=2860,
+    #     target_frame=2860,
+    #     max_tracks_per_window=150,
+    #     output_dir=output_dir
+    # )
+
     # ── PART A: Plot with three different prior-noise scales ─────────────────
     prior_configs = [
         ("Unit matrix (σ=1.0)",   1.0,   "task_6_1_cov_prior_1p0.png"),
@@ -127,7 +136,7 @@ def q6_1(db, output_dir="."):
     relative_covs  = {}
 
     for sf, ef in bundle_windows:
-        print(f"  Bundle {sf} -> {ef} ...", end="", flush=True)
+
         try:
             br = lib.solve_bundle_window(db, sf, ef)
             g, r = br["graph"], br["result"]
@@ -179,7 +188,7 @@ def q6_1(db, output_dir="."):
 # =============================================================================
 
 
-def q6_2(relative_poses, relative_covs, output_dir="."):
+def q6_2(db, relative_poses, relative_covs, output_dir="."):
     print("\n================================================================================")
     print("SECTION 6.2: POSE GRAPH OPTIMIZATION")
     print("================================================================================")
@@ -191,10 +200,7 @@ def q6_2(relative_poses, relative_covs, output_dir="."):
         print("Diagonal:", np.diag(cov))
         print()
 
-    relative_poses, relative_covs = lib.keep_connected_pose_graph_component(
-        relative_poses,
-        relative_covs
-    )
+
 
     print(
         "First 20 edges:",
@@ -207,11 +213,13 @@ def q6_2(relative_poses, relative_covs, output_dir="."):
     )
 
     edges = sorted(relative_poses.keys())
-
     for (a, b), (c, d) in zip(edges[:-1], edges[1:]):
         if b != c:
-            print(f"Gap after edge ({a}, {b}); next edge is ({c}, {d})")
-
+            print("Stopping before gap:", (a, b), "->", (c, d))
+            edges = [e for e in edges if e[0] <= a]
+            relative_poses = {e: relative_poses[e] for e in edges}
+            relative_covs = {e: relative_covs[e] for e in edges}
+            break
 
     graph = lib.build_pose_graph(relative_poses, relative_covs)
     initial = lib.build_pose_graph_initial_estimate(relative_poses)
@@ -254,8 +262,9 @@ def q6_2(relative_poses, relative_covs, output_dir="."):
     lib.plot_pose_graph_with_covariances(
         result,
         marginals,
-        title="6.2: Optimized Pose Graph With Marginal Covariances",
-        output_path=os.path.join(output_dir, "task_6_2_pose_graph_covariances.png")
+        title="6.2: Optimized Pose Graph With Final Marginal Covariances",
+        output_path=os.path.join(output_dir, "task_6_2_pose_graph_covariances.png"),
+        covariance_step=5,
     )
 
     return result
@@ -268,4 +277,4 @@ if __name__ == "__main__":
     )
 
     relative_poses, relative_covs = q6_1(db)
-    # q6_2(relative_poses, relative_covs, output_dir=".")
+    q6_2(db, relative_poses, relative_covs, output_dir=".")
