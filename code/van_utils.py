@@ -9,12 +9,11 @@ import gtsam
 from gtsam import symbol
 from gtsam.utils import plot as gtsam_plot
 
-
-
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_PATH = PROJECT_ROOT / 'dataset' / 'dataset' / 'sequences' / '00'
 
-#--------------------------------------ex1---------------------------------------------------------
+
+# --------------------------------------ex1---------------------------------------------------------
 def read_images(idx):
     img_name = f'{idx:06d}.png'
     p1, p2 = DATA_PATH / 'image_0' / img_name, DATA_PATH / 'image_1' / img_name
@@ -23,16 +22,25 @@ def read_images(idx):
         raise FileNotFoundError(f"Could not find images at {DATA_PATH}")
     return img1, img2
 
+
 def get_orb_features(img, n_features=700):
     orb = cv2.ORB_create(nfeatures=n_features)
     kp, des = orb.detectAndCompute(img, None)
     return kp, des
 
+
 def plot_stereo_side_by_side(img_l, img_r, title="Stereo Pair"):
     plt.figure(figsize=(15, 7))
-    plt.subplot(1, 2, 1); plt.imshow(img_l, cmap='gray'); plt.title(f"{title} - Left"); plt.axis('off')
-    plt.subplot(1, 2, 2); plt.imshow(img_r, cmap='gray'); plt.title(f"{title} - Right"); plt.axis('off')
+    plt.subplot(1, 2, 1);
+    plt.imshow(img_l, cmap='gray');
+    plt.title(f"{title} - Left");
+    plt.axis('off')
+    plt.subplot(1, 2, 2);
+    plt.imshow(img_r, cmap='gray');
+    plt.title(f"{title} - Right");
+    plt.axis('off')
     plt.tight_layout()
+
 
 def draw_matches_custom(img1, kp1, img2, kp2, matches, title, num=20):
     if len(matches) > num:
@@ -52,7 +60,8 @@ def draw_matches_custom(img1, kp1, img2, kp2, matches, title, num=20):
     plt.imshow(img_rgb)
     plt.axis('off')
 
-#--------------------------------------ex2---------------------------------------------------------
+
+# --------------------------------------ex2---------------------------------------------------------
 
 def compute_rectified_stereo_deviations(kp_left, kp_right, matches):
     deviations = []
@@ -165,6 +174,7 @@ def triangulate_point_linear(p1, p2, m1, m2):
 
     return X
 
+
 def triangulate_points_linear(points1, points2, m1, m2):
     points_3d = []
 
@@ -173,6 +183,7 @@ def triangulate_points_linear(points1, points2, m1, m2):
         points_3d.append(X)
 
     return np.array(points_3d)
+
 
 def triangulate_points_opencv(points1, points2, m1, m2):
     points1_t = points1.T
@@ -183,6 +194,7 @@ def triangulate_points_opencv(points1, points2, m1, m2):
     points_3d = points_4d[:3, :] / points_4d[3, :]
 
     return points_3d.T
+
 
 def plot_3d_points(points_3d, title="3D Point Cloud"):
     fig = plt.figure(figsize=(10, 8))
@@ -202,37 +214,38 @@ def median_3d_distance(points_a, points_b):
     distances = np.linalg.norm(points_a - points_b, axis=1)
     return np.median(distances)
 
-#--------------------------------------ex3---------------------------------------------------------
+
+# --------------------------------------ex3---------------------------------------------------------
 
 def plot_four_cameras(R, t, baseline=0.54):
     """
     Plots the relative 2D positions (X, Z) of the four cameras from a bird's-eye view.
     """
     import numpy as np
-    
+
     # 1. Position of Frame 0 cameras (Time t0)
     c_left_0 = np.array([0.0, 0.0])
     c_right_0 = np.array([baseline, 0.0])
-    
+
     # 2. Compute position of left_1 using the formula from Q3: C = -R^T * t
     c_world_3d = -np.dot(R.T, t).flatten()
-    c_left_1 = np.array([c_world_3d[0], c_world_3d[2]]) # Extract X (width) and Z (depth)
-    
+    c_left_1 = np.array([c_world_3d[0], c_world_3d[2]])  # Extract X (width) and Z (depth)
+
     # 3. Compute position of right_1 (shifted by baseline along the camera's local X-axis)
     right_shift_world = R.T[:, 0] * baseline
     c_right_1 = c_left_1 + np.array([right_shift_world[0], right_shift_world[2]])
 
     # 4. Plotting the cameras using matplotlib
     plt.figure(figsize=(8, 6))
-    
+
     # Plot Frame 0 cameras as triangles (pointing up)
     plt.scatter(c_left_0[0], c_left_0[1], color='blue', marker='^', s=150, label='Left Camera (t0)')
     plt.scatter(c_right_0[0], c_right_0[1], color='cyan', marker='^', s=150, label='Right Camera (t0)')
-    
+
     # Plot Frame 1 cameras as squares
     plt.scatter(c_left_1[0], c_left_1[1], color='red', marker='s', s=120, label='Left Camera (t1)')
     plt.scatter(c_right_1[0], c_right_1[1], color='orange', marker='s', s=120, label='Right Camera (t1)')
-    
+
     # Draw dashed lines connecting the stereo baseline pairs
     plt.plot([c_left_0[0], c_right_0[0]], [c_left_0[1], c_right_0[1]], 'b--', alpha=0.5)
     plt.plot([c_left_1[0], c_right_1[0]], [c_left_1[1], c_right_1[1]], 'r--', alpha=0.5)
@@ -243,8 +256,8 @@ def plot_four_cameras(R, t, baseline=0.54):
     plt.ylabel("Z (Depth / Forward movement in meters)")
     plt.grid(True, linestyle=':', alpha=0.6)
     plt.legend()
-    plt.axis('equal') # Maintain aspect ratio so distance scales are identical on both axes
-    
+    plt.axis('equal')  # Maintain aspect ratio so distance scales are identical on both axes
+
     print("\n[Plot] Generated camera relative position chart successfully.")
 
 
@@ -261,6 +274,7 @@ def project_point(P, X):
         return np.array([np.nan, np.nan])
 
     return x_h[:2] / x_h[2]
+
 
 def draw_temporal_supporters(img_left0, kp_left0,
                              img_left1, kp_left1,
@@ -295,6 +309,7 @@ def draw_temporal_supporters(img_left0, kp_left0,
     plt.imshow(canvas)
     plt.title(title + " | green=supporters, red=outliers")
     plt.axis("off")
+
 
 def build_pnp_correspondences(frame0_data, frame1_data, good_temporal_matches):
     """
@@ -356,6 +371,7 @@ def build_pnp_correspondences(frame0_data, frame1_data, good_temporal_matches):
 
     return correspondences
 
+
 def project_points_vectorized(P, X):
     """
     Project many 3D points using projection matrix P.
@@ -412,10 +428,10 @@ def evaluate_supporters(correspondences,
     err_right1 = np.linalg.norm(proj_right1 - obs_right1, axis=1)
 
     supporter_mask = (
-        (err_left0 < threshold) &
-        (err_right0 < threshold) &
-        (err_left1 < threshold) &
-        (err_right1 < threshold)
+            (err_left0 < threshold) &
+            (err_right0 < threshold) &
+            (err_left1 < threshold) &
+            (err_right1 < threshold)
     )
 
     inliers = [
@@ -431,13 +447,10 @@ def evaluate_supporters(correspondences,
     return inliers, outliers
 
 
-
-
 def draw_ransac_results(frame0_data,
                         frame1_data,
                         inliers,
                         outliers):
-
     img0 = cv2.cvtColor(
         frame0_data['img_left'],
         cv2.COLOR_GRAY2RGB
@@ -484,6 +497,7 @@ def draw_ransac_results(frame0_data,
     plt.title("3.5: RANSAC Inliers (green) vs Outliers (red)")
     plt.axis("off")
 
+
 def plot_transformed_clouds(frame0_data,
                             frame1_data,
                             R,
@@ -498,18 +512,18 @@ def plot_transformed_clouds(frame0_data,
 
     # transform cloud0 into left1 coordinates
     cloud0_transformed = (
-        R @ cloud0.T + t.reshape(3, 1)
+            R @ cloud0.T + t.reshape(3, 1)
     ).T
 
     # crop far points
     mask0 = (
-        (cloud0_transformed[:, 2] > 0) &
-        (cloud0_transformed[:, 2] < 80)
+            (cloud0_transformed[:, 2] > 0) &
+            (cloud0_transformed[:, 2] < 80)
     )
 
     mask1 = (
-        (cloud1[:, 2] > 0) &
-        (cloud1[:, 2] < 80)
+            (cloud1[:, 2] > 0) &
+            (cloud1[:, 2] < 80)
     )
 
     cloud0_transformed = cloud0_transformed[mask0]
@@ -541,7 +555,6 @@ def plot_transformed_clouds(frame0_data,
     plt.legend()
     plt.axis('equal')
     plt.grid(True)
-
 
 
 def compose_transform(R1, t1, R2, t2):
@@ -579,9 +592,7 @@ def read_ground_truth_poses():
     gt_poses = []
 
     with open(poses_path, 'r') as f:
-
         for line in f:
-
             values = list(map(float, line.strip().split()))
 
             M = np.array(values).reshape(3, 4)
@@ -627,6 +638,7 @@ def plot_trajectory(est_positions, gt_positions):
     plt.axis('equal')
     plt.grid(True)
 
+
 def get_num_frames():
     image_dir = DATA_PATH / 'image_0'
     return len(list(image_dir.glob("*.png")))
@@ -644,7 +656,6 @@ def build_stereo_dict(frame_data):
 def get_feature_observation(frame_data,
                             feature_idx,
                             stereo_dict):
-
     if feature_idx not in stereo_dict:
         return None
 
@@ -668,7 +679,6 @@ def add_feature_to_db(db,
                       feature_idx,
                       track_id,
                       observation):
-
     db.add_observation(
         frame_id=frame_id,
         feature_idx=feature_idx,
@@ -682,9 +692,7 @@ def add_feature_to_db(db,
 def get_or_create_track(db,
                         frame_id,
                         feature_idx):
-
     if db.has_feature(frame_id, feature_idx):
-
         return db.get_track_of_feature(
             frame_id,
             feature_idx
@@ -773,6 +781,7 @@ def select_track_by_min_length(db, min_length=6):
         key=lambda t: len(db.frames(t))
     )
 
+
 def crop_around_point(img, x, y, crop_size=20):
     h, w = img.shape[:2]
     half = crop_size // 2
@@ -846,13 +855,11 @@ def plot_track_observations(db, track_id, crop_size=20):
 
 
 def compute_connectivity(db):
-
     connectivity = []
 
     num_frames = db.frame_num()
 
     for frame_id in range(num_frames - 1):
-
         current_tracks = set(
             db.tracks(frame_id)
         )
@@ -873,7 +880,6 @@ def compute_connectivity(db):
 
 
 def plot_connectivity(connectivity):
-
     plt.figure(figsize=(12, 5))
 
     plt.plot(
@@ -897,8 +903,8 @@ def plot_connectivity(connectivity):
 
     plt.tight_layout()
 
-def plot_inlier_percentage(inlier_percentages):
 
+def plot_inlier_percentage(inlier_percentages):
     plt.figure(figsize=(12, 5))
 
     plt.plot(
@@ -932,6 +938,7 @@ def compute_track_lengths(db, min_length=2):
         if len(db.frames(track_id)) >= min_length
     ]
 
+
 def plot_track_length_histogram(db, min_length=2):
     track_lengths = compute_track_lengths(db, min_length=min_length)
 
@@ -958,7 +965,6 @@ def plot_track_length_histogram(db, min_length=2):
     plt.tight_layout()
 
 
-
 def project_stereo_point(K, R, t, t_stereo, X):
     """
     Projects a 3D point X into both left and right cameras of a given frame pose.
@@ -967,19 +973,21 @@ def project_stereo_point(K, R, t, t_stereo, X):
     """
     # Projection matrix for left camera: P_L = K * [R | t]
     P_left = K @ np.hstack([R, t.reshape(3, 1)])
-    
+
     # Projection matrix for right camera: P_R = K * [R | t + t_stereo]
     P_right = K @ np.hstack([R, (t.reshape(3) + t_stereo.reshape(3)).reshape(3, 1)])
-    
+
     # Project using the existing project_point function
     proj_l = project_point(P_left, X)
     proj_r = project_point(P_right, X)
-    
+
     return proj_l, proj_r
 
 
-
-
+def get_akaze_features(img):
+    akaze = cv2.AKAZE_create(threshold=0.0001)
+    kp, des = akaze.detectAndCompute(img, None)
+    return kp, des
 
 
 def run_single_pair(idx=0, display=False, plot_3d=True):
@@ -992,8 +1000,8 @@ def run_single_pair(idx=0, display=False, plot_3d=True):
 
     # 1. Read images and extract raw interest structures locally
     img1, img2 = read_images(idx)
-    kp1, des1 = get_orb_features(img1)
-    kp2, des2 = get_orb_features(img2)
+    kp1, des1 = get_akaze_features(img1)
+    kp2, des2 = get_akaze_features(img2)
 
     assert len(kp1) >= 500 and len(kp2) >= 500, f"Insufficient feature count in frame {idx}!"
 
@@ -1025,10 +1033,8 @@ def run_single_pair(idx=0, display=False, plot_3d=True):
     points1, points2 = get_matched_points(kp1, kp2, inliers)
     points_3d = triangulate_points_opencv(points1, points2, m1, m2)
 
-    # ⚠️ CRITICAL INSTRUCTOR FIX: Filter out invalid depths and extreme infinity anomalies (< 350m)
-    # This prevents bad tracking bounds from corrupting our visual odometry data pipeline
     valid_depth_mask = (points_3d[:, 2] > 0) & (points_3d[:, 2] < 350)
-    
+
     filtered_inliers = [inliers[i] for i in range(len(inliers)) if valid_depth_mask[i]]
     filtered_points_3d = points_3d[valid_depth_mask]
 
@@ -1037,8 +1043,10 @@ def run_single_pair(idx=0, display=False, plot_3d=True):
         plot_3d_points(filtered_points_3d, title=f"Frame {idx}: Triangulated Landmark Points (<350m)")
 
     # Extract clean validated local feature matrix matrices
-    des_left_inliers = np.array([des1[m.queryIdx] for m in filtered_inliers]) if filtered_inliers else np.empty((0, des1.shape[1]))
-    des_right_inliers = np.array([des2[m.trainIdx] for m in filtered_inliers]) if filtered_inliers else np.empty((0, des2.shape[1]))
+    des_left_inliers = np.array([des1[m.queryIdx] for m in filtered_inliers]) if filtered_inliers else np.empty(
+        (0, des1.shape[1]))
+    des_right_inliers = np.array([des2[m.trainIdx] for m in filtered_inliers]) if filtered_inliers else np.empty(
+        (0, des2.shape[1]))
 
     # Package structural results safely for tracking sequence steps
     return {
@@ -1056,16 +1064,18 @@ def run_single_pair(idx=0, display=False, plot_3d=True):
         'points_3d': filtered_points_3d
     }
 
+
 #### ex5 ###
 
 
 def init_gtsam_stereo_calibration():
     """Reads camera calibration matrices and constructs a GTSAM Cal3_S2Stereo object."""
     K_mat, _, m_right0 = read_cameras()
-    fx, fy, cx, cy, skew = K_mat[0,0], K_mat[1,1], K_mat[0,2], K_mat[1,2], K_mat[0,1]
+    fx, fy, cx, cy, skew = K_mat[0, 0], K_mat[1, 1], K_mat[0, 2], K_mat[1, 2], K_mat[0, 1]
     t_stereo = np.linalg.inv(K_mat) @ m_right0[:, 3]
     baseline = abs(t_stereo[0])
     return gtsam.Cal3_S2Stereo(fx, fy, skew, cx, cy, baseline)
+
 
 def get_gtsam_camera_pose(gt_poses, frame_id):
     """Converts world-to-camera ground truth matrices into a GTSAM Pose3 object."""
@@ -1074,34 +1084,37 @@ def get_gtsam_camera_pose(gt_poses, frame_id):
     t_c2w = (-R_w2c.T @ t_w2c).flatten()
     return gtsam.Pose3(gtsam.Rot3(R_c2w), gtsam.Point3(t_c2w[0], t_c2w[1], t_c2w[2]))
 
+
 def compute_stereo_reprojection_error(pose, K_gtsam, point_3d, obs):
     """Computes the L2 pixel reprojection error for a single stereo observation."""
     try:
         camera = gtsam.StereoCamera(pose, K_gtsam)
         proj = camera.project(point_3d)
-        return np.sqrt((proj.uL() - obs.x_left)**2 + (proj.v() - obs.y)**2 + (proj.uR() - obs.x_right)**2)
+        return np.sqrt((proj.uL() - obs.x_left) ** 2 + (proj.v() - obs.y) ** 2 + (proj.uR() - obs.x_right) ** 2)
     except RuntimeError:
         return np.nan
+
 
 def compute_single_factor_error(pose, K_gtsam, point_3d, obs, pose_id=0, point_id=0):
     """Creates a temporary GenericStereoFactor3D and computes its scalar graph error."""
     measurement_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
     pose_key, point_key = symbol('c', pose_id), symbol('q', point_id)
-    
+
     stereo_meas = gtsam.StereoPoint2(obs.x_left, obs.x_right, obs.y)
     factor = gtsam.GenericStereoFactor3D(stereo_meas, measurement_noise, pose_key, point_key, K_gtsam)
-    
+
     values = gtsam.Values()
     values.insert(pose_key, pose)
     values.insert(point_key, point_3d)
     return factor.error(values)
+
 
 def extract_optimized_geometry(result, window_frames, landmarks_in_window):
     """Extracts camera trajectories and applies a 3-STD statistical filter to 3D landmarks."""
     cam_positions = np.array([
         result.atPose3(symbol('c', f_id)).translation() for f_id in window_frames
     ])
-    
+
     landmark_positions = []
     for t_id in landmarks_in_window:
         point_key = symbol('q', t_id)
@@ -1117,29 +1130,30 @@ def extract_optimized_geometry(result, window_frames, landmarks_in_window):
         lm_filtered = landmark_positions[mask]
     else:
         lm_filtered = landmark_positions
-        
+
     return cam_positions, lm_filtered
+
 
 def draw_projection_validation_frames(frame_id, obs, proj_init, proj_final):
     """Draws ground-truth measurements, pre-optimization, and post-optimization circles on images."""
     img_left_gray, img_right_gray = read_images(frame_id)
     img_left = cv2.cvtColor(img_left_gray, cv2.COLOR_GRAY2BGR)
     img_right = cv2.cvtColor(img_right_gray, cv2.COLOR_GRAY2BGR)
-    
+
     meas_L = (int(obs.x_left), int(obs.y))
     meas_R = (int(obs.x_right), int(obs.y))
     proj_before_L = (int(proj_init.uL()), int(proj_init.v()))
     proj_before_R = (int(proj_init.uR()), int(proj_init.v()))
     proj_after_L = (int(proj_final.uL()), int(proj_final.v()))
     proj_after_R = (int(proj_final.uR()), int(proj_final.v()))
-    
-    for img, pt_meas, pt_before, pt_after in [(img_left, meas_L, proj_before_L, proj_after_L), 
-                                             (img_right, meas_R, proj_before_R, proj_after_R)]:
-        cv2.circle(img, pt_meas, radius=6, color=(255, 0, 0), thickness=-1)    # Blue
-        cv2.circle(img, pt_before, radius=6, color=(0, 0, 255), thickness=-1)  # Red
-        cv2.circle(img, pt_after, radius=6, color=(0, 255, 0), thickness=-1)   # Green
 
-    cv2.putText(img_left, "Blue: Meas | Red: Before | Green: After", (20, 40), 
+    for img, pt_meas, pt_before, pt_after in [(img_left, meas_L, proj_before_L, proj_after_L),
+                                              (img_right, meas_R, proj_before_R, proj_after_R)]:
+        cv2.circle(img, pt_meas, radius=6, color=(255, 0, 0), thickness=-1)  # Blue
+        cv2.circle(img, pt_before, radius=6, color=(0, 0, 255), thickness=-1)  # Red
+        cv2.circle(img, pt_after, radius=6, color=(0, 255, 0), thickness=-1)  # Green
+
+    cv2.putText(img_left, "Blue: Meas | Red: Before | Green: After", (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
     output_dir = "./outputs"
     os.makedirs(output_dir, exist_ok=True)
@@ -1147,14 +1161,11 @@ def draw_projection_validation_frames(frame_id, obs, proj_init, proj_final):
     cv2.imwrite(os.path.join(output_dir, f"task_5_3_worst_frame_{frame_id}_right.png"), img_right)
 
 
-
-
-
 def w2c_to_local_gtsam_pose(R_start, t_start, R_f, t_f):
     """
     Transforms a world-to-camera (w2c) extrinsic pose into a local window coordinate system
     where the start frame is the origin, and returns it as a gtsam.Pose3 object (c2w).
-    
+
     Parameters:
     - R_start, t_start: Extrinsics of the first frame in the bundle window (the local origin).
     - R_f, t_f: Extrinsics of the current frame to transform.
@@ -1166,25 +1177,22 @@ def w2c_to_local_gtsam_pose(R_start, t_start, R_f, t_f):
 
     gtsam_rot = gtsam.Rot3(R_gtsam)
     gtsam_point = gtsam.Point3(float(t_gtsam[0]), float(t_gtsam[1]), float(t_gtsam[2]))
-    
-    return gtsam.Pose3(gtsam_rot, gtsam_point)
 
+    return gtsam.Pose3(gtsam_rot, gtsam_point)
 
 
 def valid_stereo_obs(obs, min_disp=1.0):
     """
     Validates a stereo observation by checking if the disparity is positive
     and above a minimal threshold, preventing degenerate triangulation.
-    
+
     Parameters:
     - obs: An observation object containing x_left and x_right attributes.
     - min_disp: Minimum required disparity in pixels.
     """
     disparity = obs.x_left - obs.x_right
-    
+
     return disparity >= min_disp
-
-
 
 
 def choose_keyframes(db, distance_threshold=2.5, max_gap=20, min_gap=5):
@@ -1203,8 +1211,8 @@ def choose_keyframes(db, distance_threshold=2.5, max_gap=20, min_gap=5):
         frames_since_last = idx - last_kf
 
         if (
-            frames_since_last >= min_gap
-            and accumulated_dist >= distance_threshold
+                frames_since_last >= min_gap
+                and accumulated_dist >= distance_threshold
         ) or frames_since_last >= max_gap:
             keyframes.append(idx)
             last_kf = idx
@@ -1215,8 +1223,10 @@ def choose_keyframes(db, distance_threshold=2.5, max_gap=20, min_gap=5):
 
     return keyframes
 
+
 def pose_translation_np(pose):
     return np.array(pose.translation()).reshape(3)
+
 
 def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
     K_gtsam = init_gtsam_stereo_calibration()
@@ -1233,10 +1243,9 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
 
     window_frames = list(range(start_frame, end_frame + 1))
 
-
     R_start_w2c, t_start_w2c = db.camera_poses[start_frame]
     pose_start_global = gtsam.Pose3(
-        gtsam.Rot3(R_start_w2c.T), 
+        gtsam.Rot3(R_start_w2c.T),
         gtsam.Point3((-R_start_w2c.T @ t_start_w2c).flatten())
     )
 
@@ -1246,7 +1255,7 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
 
         # פוזה גלובלית במונחי GTSAM (Camera to World)
         pose_f_global = gtsam.Pose3(
-            gtsam.Rot3(R_f_w2c.T), 
+            gtsam.Rot3(R_f_w2c.T),
             gtsam.Point3((-R_f_w2c.T @ t_f_w2c).flatten())
         )
 
@@ -1255,8 +1264,8 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
 
         if f_id == start_frame:
             anchor_factor = gtsam.PriorFactorPose3(
-                pose_key, 
-                gtsam.Pose3(), 
+                pose_key,
+                gtsam.Pose3(),
                 gtsam.noiseModel.Diagonal.Sigmas(np.ones(6) * 1e-6)
             )
             graph.add(anchor_factor)
@@ -1294,11 +1303,8 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
             min(remaining, len(extras))
         )
 
-
     optimized_landmark_ids = []
     pose_factor_count = {f_id: 0 for f_id in window_frames}
-
-
 
     for track_id in final_tracks_to_optimize:
         track_frames = [f for f in db.frames(track_id) if f in window_frames]
@@ -1324,8 +1330,6 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
 
         if X_cam[2] <= 2.0 or X_cam[2] > 120.0:
             continue
-
-
 
         init_pose = initial_estimate.atPose3(symbol("c", init_frame))
         X_local = init_pose.transformFrom(
@@ -1393,8 +1397,6 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
     print(f"Graph size before optimization: {graph.size()}")
     print(f"Initial estimate size: {initial_estimate.size()}")
 
-
-
     initial_error = graph.error(initial_estimate)
 
     result = gtsam.LevenbergMarquardtOptimizer(
@@ -1431,13 +1433,14 @@ def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
         "initial": initial_estimate,
         "relative_pose": relative_pose,
         "optimized_points_local": np.array(optimized_points_local),
-        "optimized_landmark_ids": optimized_landmark_ids, 
+        "optimized_landmark_ids": optimized_landmark_ids,
         "anchor_factor": anchor_factor if 'anchor_factor' in locals() else graph.at(0),
         "start_frame": start_frame,
         "end_frame": end_frame,
         "initial_error": initial_error,
         "final_error": final_error
     }
+
 
 def plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global, output_dir="./outputs"):
     gt_poses = read_ground_truth_poses()
@@ -1572,11 +1575,11 @@ def plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_di
     )
 
 
-
-
 import pickle
+
 DB_PKL_PATH = "tracking_db_ex5.pkl"
 from tracking_database_custom import TrackingDB
+
 
 def build_data(num_frames=10):
     """
@@ -1605,8 +1608,6 @@ def build_data(num_frames=10):
 
     for idx in range(1, num_frames):
         print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1}")
-
-
 
         curr_data = run_single_pair(
             idx=idx,
@@ -1724,7 +1725,7 @@ def build_data(num_frames=10):
             inlier_percentages.append(0.0)
             R_global = R_global.copy()
             t_global = t_global.copy()
-            best_inliers = [] 
+            best_inliers = []
 
         ransac_temporal_matches = [c['temporal_match'] for c in best_inliers]
 
@@ -1748,6 +1749,7 @@ def build_data(num_frames=10):
     db.camera_poses = camera_poses
 
     return db
+
 
 def load_or_build_db(force_rebuild=False, num_frames=None):
     if num_frames is None:
@@ -1836,8 +1838,6 @@ def debug_scale_drift(keyframes, global_keyframe_poses):
     print("scale ratio est/gt:", np.sum(est_steps) / np.sum(gt_steps))
 
 
-
-
 # =============================================================================
 # GRAPH PLOTTING FUNCTIONS
 # =============================================================================
@@ -1871,24 +1871,24 @@ def factor_error_graph(frame_indices, factor_errors, output_dir):
 def bundle1_3D(window_frames, cam_positions, result, axis_length, output_dir):
     fig3d = plt.figure(figsize=(8, 6))
     ax3d = fig3d.add_subplot(111, projection='3d')
-    
-    xs_plot = cam_positions[:, 2]  
-    ys_plot = cam_positions[:, 0]  
-    zs_plot = -cam_positions[:, 1] 
+
+    xs_plot = cam_positions[:, 2]
+    ys_plot = cam_positions[:, 0]
+    zs_plot = -cam_positions[:, 1]
 
     ax3d.plot(xs_plot, ys_plot, zs_plot, 'k--', linewidth=1.5, zorder=1)
-    
+
     for i in range(len(window_frames)):
         pose = result.atPose3(symbol('c', window_frames[i]))
         R = pose.rotation().matrix()
         cx, cy, cz = xs_plot[i], ys_plot[i], zs_plot[i]
-        
+
         ax3d.scatter(cx, cy, cz, color='black', s=15, zorder=2)
-        
-        ax_right   = R[:, 0]
-        ax_down    = R[:, 1]
+
+        ax_right = R[:, 0]
+        ax_down = R[:, 1]
         ax_forward = R[:, 2]
-        
+
         ax3d.plot([cx, cx + axis_length * ax_right[2]],
                   [cy, cy + axis_length * ax_right[0]],
                   [cz, cz - axis_length * ax_right[1]], color='r', linewidth=1.5)
@@ -1914,8 +1914,9 @@ def bundle1_3D(window_frames, cam_positions, result, axis_length, output_dir):
 def marginal_covariances(window_frames, graph, result, output_dir):
     fig_cov = plt.figure(figsize=(8, 6))
     ax_cov = fig_cov.add_subplot(111, projection='3d')
-    ax_cov.set_title("Plot Trajectory\nGTSAM Factor Graph State with Marginal Covariances\n", fontsize=11, fontweight='bold')
-    
+    ax_cov.set_title("Plot Trajectory\nGTSAM Factor Graph State with Marginal Covariances\n", fontsize=11,
+                     fontweight='bold')
+
     try:
         marginals = gtsam.Marginals(graph, result)
         for f_id in window_frames:
@@ -2070,8 +2071,6 @@ def build_pose_graph(relative_poses, relative_covs):
     return graph
 
 
-
-
 def extract_pose_graph_positions(values):
     """
     Extract sorted pose keys and translations from GTSAM Values.
@@ -2217,6 +2216,7 @@ def plot_pose_graph_with_covariances(values,
 
     print(f"Saved: {output_path}")
 
+
 def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
     """
     Re-solves a bundle window identically to lib.solve_bundle_window but
@@ -2224,10 +2224,10 @@ def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
     Returns (graph, result, window_frames).
     """
     import random
-    K_gtsam   = init_gtsam_stereo_calibration()
+    K_gtsam = init_gtsam_stereo_calibration()
     K_mat, P_left0, P_right0 = read_cameras()
 
-    graph            = gtsam.NonlinearFactorGraph()
+    graph = gtsam.NonlinearFactorGraph()
     initial_estimate = gtsam.Values()
 
     base_noise = gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
@@ -2271,9 +2271,8 @@ def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
         ts = list(db.tracks(f_id))
         guaranteed_tracks.update(random.sample(ts, min(15, len(ts))))
 
-
-    remaining  = 150 - len(guaranteed_tracks)
-    extras     = list(set(candidate_tracks) - guaranteed_tracks)
+    remaining = 150 - len(guaranteed_tracks)
+    extras = list(set(candidate_tracks) - guaranteed_tracks)
     final_tracks = list(guaranteed_tracks) + (
         random.sample(extras, min(remaining, len(extras))) if remaining > 0 else []
     )
@@ -2283,7 +2282,7 @@ def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
         if len(track_frames) < 2:
             continue
         init_frame = track_frames[0]
-        obs_init   = db.observation(init_frame, track_id)
+        obs_init = db.observation(init_frame, track_id)
         if not valid_stereo_obs(obs_init, min_disp=1.0):
             continue
         X_cam = triangulate_point_linear(
@@ -2295,10 +2294,10 @@ def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
             continue
 
         init_pose = initial_estimate.atPose3(symbol("c", init_frame))
-        X_local   = init_pose.transformFrom(
+        X_local = init_pose.transformFrom(
             gtsam.Point3(float(X_cam[0]), float(X_cam[1]), float(X_cam[2]))
         )
-        point_key   = symbol("q", track_id)
+        point_key = symbol("q", track_id)
         temp_factors = []
         for f_id in track_frames:
             obs = db.observation(f_id, track_id)
@@ -2504,3 +2503,865 @@ def debug_target_frame_geometry(db, start_frame=2840, end_frame=2860,
     plt.close()
 
     return rows
+
+
+# =============================================================================
+# EXERCISE 6 BACKEND MODULES
+# =============================================================================
+from matplotlib.patches import Ellipse
+
+
+def run_and_plot_prior_sensitivity(db, c0_idx, ck_idx, output_dir):
+    """Executes bundle window optimizations over varying noise scales and saves 3D plots."""
+    prior_configs = [
+        ("Unit matrix (σ=1.0)", 1.0, "task_6_1_cov_prior_1p0.png"),
+        ("I × 0.05  (σ=0.05)", 0.05, "task_6_1_cov_prior_0p05.png"),
+        ("I × 1e-6  (σ=1e-6)", 1e-6, "task_6_1_cov_prior_1e-6.png"),
+    ]
+    for label, sigma, fname in prior_configs:
+        print(f"  Prior noise σ = {sigma}  ({label}) ...", end="", flush=True)
+        graph_s, result_s, wf_s = solve_bundle_with_prior_sigma(db, c0_idx, ck_idx, prior_sigma=sigma)
+        marginal_s = gtsam.Marginals(graph_s, result_s)
+
+        fig = plt.figure(figsize=(9, 7))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_title(f"6.1 – Bundle {c0_idx}→{ck_idx}  |  prior noise: {label}\n"
+                     "Frame locations with marginal covariances", fontsize=10, fontweight='bold')
+
+        for f_id in wf_s:
+            key = gtsam.symbol('c', f_id)
+            pose = result_s.atPose3(key)
+            try:
+                cov = marginal_s.marginalCovariance(key)
+                gtsam_plot.plot_pose3_on_axes(ax, pose, axis_length=0.3, P=cov)
+            except Exception:
+                gtsam_plot.plot_pose3_on_axes(ax, pose, axis_length=0.3)
+
+        ax.set_xlabel("X axis");
+        ax.set_ylabel("Y axis");
+        ax.set_zlabel("Z axis")
+        if sigma != 1.0:
+            ax.set_xlim(-10.0, 10.0)
+            ax.set_ylim(-10.0, 10.0)
+        ax.view_init(elev=20, azim=-60)
+        plt.tight_layout()
+        path = os.path.join(output_dir, fname)
+        plt.savefig(path, dpi=200, bbox_inches='tight')
+        plt.close()
+        print(f" saved → {path}")
+
+
+def compute_relative_pose_and_covariance(db, start_idx, end_idx):
+    """Computes relative transformation and conditional covariance via Schur Complement."""
+    br = solve_bundle_window(db, start_idx, end_idx)
+    graph, result = br["graph"], br["result"]
+    marginals = gtsam.Marginals(graph, result)
+
+    key_0 = gtsam.symbol('c', start_idx)
+    key_k = gtsam.symbol('c', end_idx)
+
+    joint_cov = marginals.jointMarginalCovariance(gtsam.KeyVector([key_0, key_k])).fullMatrix()
+    Sigma_00 = joint_cov[0:6, 0:6]
+    Sigma_0k = joint_cov[0:6, 6:12]
+    Sigma_k0 = joint_cov[6:12, 0:6]
+    Sigma_kk = joint_cov[6:12, 6:12]
+
+    Sigma_conditional_global = Sigma_kk - Sigma_k0 @ np.linalg.inv(Sigma_00) @ Sigma_0k
+    relative_pose = br["relative_pose"]
+    Ad_k = relative_pose.AdjointMap()
+    Sigma_rel = Ad_k @ Sigma_conditional_global @ Ad_k.T
+    return relative_pose, Sigma_rel
+
+
+def compute_all_relative_constraints(db, keyframes):
+    """Loops over sequential keyframes to gather valid pose graph constraints."""
+    bundle_windows = [(keyframes[i], keyframes[i + 1]) for i in range(len(keyframes) - 1)]
+    relative_poses, relative_covs = {}, {}
+
+    for sf, ef in bundle_windows:
+        try:
+            rel_pose, rel_cov = compute_relative_pose_and_covariance(db, sf, ef)
+            relative_poses[(sf, ef)] = rel_pose
+            relative_covs[(sf, ef)] = rel_cov
+            print(f" Bundle ({sf:4d} -> {ef:4d}): OK")
+        except Exception as e:
+            print(f" Bundle ({sf:4d} -> {ef:4d}): FAILED ({e})")
+
+    print(f"\nSuccessfully computed {len(relative_poses)}/{len(bundle_windows)} relative pose constraints.")
+    print(f"\n{'Pair':<15} {'|t| [m]':>10}  {'det(Σ_rel)':>14}")
+    print("-" * 43)
+    for (sf, ef), rp in relative_poses.items():
+        t_norm = float(np.linalg.norm(rp.translation()))
+        det = float(np.linalg.det(relative_covs[(sf, ef)]))
+        print(f"({sf:4d},{ef:4d})   {t_norm:10.4f}   {det:14.6e}")
+
+    return relative_poses, relative_covs
+
+
+def clean_pose_graph_edges(relative_poses, relative_covs):
+    """Filters out constraints containing uninitialized or invalid covariance values."""
+    cleaned_poses, cleaned_covs = {}, {}
+    for edge in sorted(relative_poses.keys()):
+        cov = relative_covs[edge]
+        if np.any(np.diag(cov) <= 0) or np.any(np.isnan(cov)):
+            print(f"Skipping bad covariance edge: {edge}")
+            continue
+        cleaned_poses[edge] = relative_poses[edge]
+        cleaned_covs[edge] = relative_covs[edge]
+    return cleaned_poses, cleaned_covs
+
+
+def build_and_initialize_pose_graph(cleaned_poses, cleaned_covs):
+    """Constructs the factor graph and provides robust chain initialization across gaps."""
+    graph = build_pose_graph(cleaned_poses, cleaned_covs)
+    initial = gtsam.Values()
+    sorted_edges = sorted(cleaned_poses.keys())
+
+    if len(sorted_edges) == 0:
+        raise RuntimeError("No valid relative poses left after cleaning.")
+
+    first_kf = sorted_edges[0][0]
+    current_global_pose = gtsam.Pose3()
+    initial.insert(gtsam.symbol("c", first_kf), current_global_pose)
+
+    for start_kf, end_kf in sorted_edges:
+        start_key = gtsam.symbol("c", start_kf)
+        end_key = gtsam.symbol("c", end_kf)
+
+        if not initial.exists(start_key):
+            initial.insert(start_key, current_global_pose)
+        else:
+            current_global_pose = initial.atPose3(start_key)
+
+        rel_pose = cleaned_poses[(start_kf, end_kf)]
+        end_pose = current_global_pose.compose(rel_pose)
+
+        if not initial.exists(end_key):
+            initial.insert(end_key, end_pose)
+            current_global_pose = end_pose
+
+    # Fix safety isolates
+    missing = []
+    for i in range(graph.size()):
+        factor = graph.at(i)
+        for key in factor.keys():
+            if not initial.exists(key):
+                missing.append(gtsam.Symbol(key).index())
+    if missing:
+        print("Warning - Fixed missing keys that would have collapsed to 0:", sorted(set(missing)))
+        for m_key in missing:
+            initial.insert(gtsam.symbol("c", m_key), gtsam.Pose3())
+
+    return graph, initial
+
+
+def optimize_pose_graph(graph, initial):
+    """Optimizes the pose graph factor collection via Levenberg-Marquardt."""
+    optimizer = gtsam.LevenbergMarquardtOptimizer(graph, initial)
+    result = optimizer.optimize()
+    marginals = gtsam.Marginals(graph, result)
+    return result, marginals
+
+
+def plot_pose_graph_2d_ellipses(result, marginals, output_path, step=1, sigma_scale=20):
+    """Generates a top-down birds-eye-view plotting 20-sigma confidence ellipses."""
+    frame_ids, positions = extract_pose_graph_positions(result)
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.plot(positions[:, 0], positions[:, 2], label="optimised trajectory", color="#1f77b4", linewidth=1.2)
+    ax.scatter(positions[0, 0], positions[0, 2], color="black", marker="s", s=80, label="c_0", zorder=5)
+
+    for frame_id in frame_ids[::step]:
+        key = gtsam.symbol("c", frame_id)
+        if not result.exists(key):
+            continue
+        pose = result.atPose3(key)
+        p = pose_translation_np(pose)
+
+        try:
+            cov6 = marginals.marginalCovariance(key)
+            cov_trans = cov6[3:6, 3:6]
+            cov_xz = cov_trans[np.ix_([0, 2], [0, 2])]
+
+            eigvals, eigvecs = np.linalg.eigh(cov_xz)
+            eigvals = np.maximum(eigvals, 0.0)
+
+            width = 2 * sigma_scale * np.sqrt(eigvals[0])
+            height = 2 * sigma_scale * np.sqrt(eigvals[1])
+            angle = np.degrees(np.arctan2(eigvecs[1, 0], eigvecs[0, 0]))
+
+            ellipse = Ellipse(
+                xy=(p[0], p[2]), width=width, height=height, angle=angle,
+                edgecolor="red", facecolor="none", alpha=0.4, linewidth=0.8
+            )
+            ax.add_patch(ellipse)
+        except Exception:
+            pass
+
+    ax.set_title("Q6.2: keyframes with marginal covariances", fontsize=11)
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Z — forward (m)")
+    ax.grid(True, linestyle=":", alpha=0.5)
+    ax.legend(loc="upper left")
+    ax.axis("equal")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+    print(f"Saved 2D Covariance Plot → {output_path}")
+
+    # =============================================================================
+
+
+# EXERCISE 7 BACKEND MODULES
+# =============================================================================
+import networkx as nx
+
+
+def _shortest_path_pose_graph(relative_poses, relative_covs):
+    """Builds a NetworkX graph weighted by the trace of relative covariances."""
+    G = nx.Graph()
+    for (start_kf, end_kf), cov in relative_covs.items():
+        weight = float(np.trace(cov))
+        G.add_edge(start_kf, end_kf, weight=weight)
+    return G
+
+
+def _get_edge_pose_and_cov(u, v, relative_poses, relative_covs):
+    """Retrieves relative pose/cov, handles path inversion via Adjoint propagation."""
+    if (u, v) in relative_poses:
+        return relative_poses[(u, v)], relative_covs[(u, v)]
+
+    if (v, u) in relative_poses:
+        pose_vu = relative_poses[(v, u)]
+        cov_vu = relative_covs[(v, u)]
+
+        pose_uv = pose_vu.inverse()
+        Ad_inv = pose_uv.AdjointMap()
+        cov_uv = Ad_inv @ cov_vu @ Ad_inv.T
+        return pose_uv, cov_uv
+
+    raise KeyError(f"No pose-graph edge between keyframes {u} and {v}")
+
+
+def detect_loop_closure_candidates(relative_poses, relative_covs, keyframes, mahalanobis_threshold):
+    """Finds historical matches within a covariance uncertainty threshold using Dijkstra search."""
+    G = _shortest_path_pose_graph(relative_poses, relative_covs)
+    loop_candidates = {}
+    total_candidates_counter = 0
+
+    for n_idx, c_n in enumerate(keyframes):
+        if n_idx == 0:
+            continue
+
+        loop_candidates[c_n] = []
+        if c_n not in G:
+            continue
+
+        print(f"Processing Keyframe c_{c_n} ({n_idx}/{len(keyframes) - 1})...")
+
+        for c_i in keyframes[:n_idx]:
+            if c_i not in G:
+                continue
+
+            try:
+                path = nx.shortest_path(G, source=c_n, target=c_i, weight="weight")
+                suffix_pose = gtsam.Pose3()
+                Sigma_rel = np.zeros((6, 6))
+
+                for u, v in reversed(list(zip(path[:-1], path[1:]))):
+                    edge_pose, edge_cov = _get_edge_pose_and_cov(u, v, relative_poses, relative_covs)
+                    Ad_suffix_inv = suffix_pose.inverse().AdjointMap()
+                    Sigma_rel += Ad_suffix_inv @ edge_cov @ Ad_suffix_inv.T
+                    suffix_pose = edge_pose.compose(suffix_pose)
+
+                delta_c_ni = suffix_pose
+                xi_ni = gtsam.Pose3.Logmap(delta_c_ni)
+                Sigma_inv = np.linalg.inv(Sigma_rel + np.eye(6) * 1e-6)
+                mahalanobis_dist = xi_ni.T @ Sigma_inv @ xi_ni
+
+                if mahalanobis_dist < mahalanobis_threshold:
+                    loop_candidates[c_n].append({
+                        "candidate_kf": c_i,
+                        "mahalanobis_distance": mahalanobis_dist,
+                        "relative_pose_estimate": delta_c_ni,
+                        "relative_covariance": Sigma_rel,
+                        "path": path,
+                    })
+                    total_candidates_counter += 1
+
+            except nx.NetworkXNoPath:
+                continue
+            except Exception:
+                continue
+
+        num_found = len(loop_candidates[c_n])
+        if num_found > 0:
+            print(f"  --> Found {num_found} loop closure candidates for c_{c_n}!")
+            for cand in loop_candidates[c_n]:
+                print(
+                    f"    * Candidate c_{cand['candidate_kf']}: Mahalanobis Dist = {cand['mahalanobis_distance']:.4f} "
+                    f"(path length {len(cand['path']) - 1})")
+
+    return loop_candidates, total_candidates_counter
+
+
+def plot_loop_candidates(keyframes, candidates, optimized_values, output_dir="."):
+    """Plots the estimated pose trajectory overlaying active loop-closure shortcuts."""
+    kf_positions = {}
+    for kf in keyframes:
+        key = gtsam.symbol('c', kf)
+        if not optimized_values.exists(key):
+            continue
+        pose = optimized_values.atPose3(key)
+        pos_3d = pose.translation()
+        kf_positions[kf] = (pos_3d[0], pos_3d[2])
+
+    plotted_keyframes = [kf for kf in keyframes if kf in kf_positions]
+    positions_array = np.array([kf_positions[kf] for kf in plotted_keyframes])
+
+    plt.figure(figsize=(12, 9))
+    plt.plot(positions_array[:, 0], positions_array[:, 1], color='gray', linestyle='-', alpha=0.5,
+             label='Estimated Trajectory')
+    plt.scatter(positions_array[:, 0], positions_array[:, 1], color='black', s=5, alpha=0.3)
+
+    has_drawn_candidate_label = False
+    has_drawn_link_label = False
+
+    for c_n, cands in candidates.items():
+        if not cands or c_n not in kf_positions:
+            continue
+
+        x_n, z_n = kf_positions[c_n]
+        plt.scatter(x_n, z_n, color='green', s=30, zorder=3,
+                    label='Current Frame ($c_n$)' if not has_drawn_candidate_label else "")
+        has_drawn_candidate_label = True
+
+        for cand in cands:
+            c_i = cand["candidate_kf"]
+            if c_i not in kf_positions:
+                continue
+            x_i, z_i = kf_positions[c_i]
+
+            plt.scatter(x_i, z_i, color='magenta', s=15, zorder=3)
+            plt.plot([x_n, x_i], [z_n, z_i], color='red', linestyle='--', alpha=0.6, linewidth=1.0,
+                     label='Loop Closure Constraint' if not has_drawn_link_label else "")
+            has_drawn_link_label = True
+
+    plt.title("Q7.1: Detected Loop Closure Candidates on the ESTIMATED Trajectory (Covariance-Weighted)", fontsize=12,
+              fontweight='bold')
+    plt.xlabel("X (Width) [m]")
+    plt.ylabel("Z (Depth / Forward) [m]")
+    plt.axis("equal")
+    plt.grid(True, linestyle=":", alpha=0.5)
+    plt.legend(loc="upper left")
+    plt.tight_layout()
+
+    output_path = os.path.join(output_dir, "task_7_1_loop_candidates_trajectory.png")
+    plt.savefig(output_path, dpi=300)
+    plt.close()
+    print(f"\n[Plot] Saved loop candidates visualization to: {output_path}")
+
+
+def verify_loop_closures_consensus(db, loop_candidates, inlier_threshold, output_dir):
+    """Performs AKAZE matching and Fundamental RANSAC verification to confirm loops."""
+    bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+    verified_loops = {}
+    total_verified_loops = 0
+
+    for c_n, cands in loop_candidates.items():
+        if not cands:
+            continue
+
+        verified_loops[c_n] = []
+        img_n, _ = read_images(c_n)
+        kp_n, des_n = get_akaze_features(img_n)
+
+        for cand in cands:
+            c_i = cand["candidate_kf"]
+            img_i, _ = read_images(c_i)
+            kp_i, des_i = get_akaze_features(img_i)
+
+            if des_n is None or des_i is None:
+                continue
+
+            knn_matches = bf_matcher.knnMatch(des_i, des_n, k=2)
+            good_matches = [m for m, n in knn_matches if m.distance < 0.7 * n.distance]
+
+            if len(good_matches) < 4:
+                continue
+
+            pts_i = np.array([kp_i[m.queryIdx].pt for m in good_matches], dtype=np.float32)
+            pts_n = np.array([kp_n[m.trainIdx].pt for m in good_matches], dtype=np.float32)
+
+            _, mask = cv2.findFundamentalMat(pts_i, pts_n, cv2.FM_RANSAC, 3.0, 0.99)
+            if mask is None:
+                continue
+
+            inliers_count = int(np.sum(mask))
+            print(
+                f"[Q7.2] Testing Link c_{c_n} -> c_{c_i}: Geometric Inliers = {inliers_count} (Required: {inlier_threshold})")
+
+            if inliers_count >= inlier_threshold:
+                print(f"  --> [SUCCESS] Loop Verified! Inliers: {inliers_count}")
+
+                inlier_matches = [good_matches[i] for i in range(len(good_matches)) if mask[i][0] == 1]
+                outlier_matches = [good_matches[i] for i in range(len(good_matches)) if mask[i][0] == 0]
+
+                verified_loops[c_n].append({
+                    "candidate_kf": c_i,
+                    "inliers_count": inliers_count,
+                    "inlier_matches": inlier_matches
+                })
+                total_verified_loops += 1
+
+                img_i_color = cv2.cvtColor(img_i, cv2.COLOR_GRAY2RGB)
+                img_n_color = cv2.cvtColor(img_n, cv2.COLOR_GRAY2RGB)
+
+                for match in outlier_matches:
+                    pt_i = tuple(map(int, kp_i[match.queryIdx].pt))
+                    pt_n = tuple(map(int, kp_n[match.trainIdx].pt))
+                    cv2.circle(img_i_color, pt_i, 3, (0, 255, 255), -1)
+                    cv2.circle(img_n_color, pt_n, 3, (0, 255, 255), -1)
+
+                for match in inlier_matches:
+                    pt_i = tuple(map(int, kp_i[match.queryIdx].pt))
+                    pt_n = tuple(map(int, kp_n[match.trainIdx].pt))
+                    cv2.circle(img_i_color, pt_i, 3, (255, 165, 0), -1)
+                    cv2.circle(img_n_color, pt_n, 3, (255, 165, 0), -1)
+
+                fig, axes = plt.subplots(2, 1, figsize=(15, 10))
+                axes[0].imshow(img_i_color)
+                axes[0].set_title(f"Image 1: Inliers (orange), Outliers (cyan) | Frame c_{c_i}")
+                axes[0].axis('off')
+
+                axes[1].imshow(img_n_color)
+                axes[1].set_title(
+                    f"Image 2: Inliers (orange), Outliers (cyan) | Frame c_{c_n} (Total Inliers: {inliers_count})")
+                axes[1].axis('off')
+
+                plt.tight_layout()
+                os.makedirs(output_dir, exist_ok=True)
+                out_img_path = os.path.join(output_dir, f"task_7_2_loop_{c_i}_{c_n}.png")
+                plt.savefig(out_img_path, dpi=200, bbox_inches='tight')
+                plt.close()
+
+    return verified_loops, total_verified_loops
+
+
+def _left_stereo_query_to_point_index(frame_data):
+    """Map left keypoint index -> triangulated 3D point index for a run_single_pair result."""
+    return {m.queryIdx: idx for idx, m in enumerate(frame_data["stereo_inliers"])}
+
+
+def _left_stereo_query_to_match(frame_data):
+    """Map left keypoint index -> stereo match for a run_single_pair result."""
+    return {m.queryIdx: m for m in frame_data["stereo_inliers"]}
+
+
+def _safe_stereo_factor(obs, noise_model, pose_key, point_key, K_gtsam):
+    return gtsam.GenericStereoFactor3D(
+        gtsam.StereoPoint2(float(obs[0]), float(obs[1]), float(obs[2])),
+        noise_model,
+        pose_key,
+        point_key,
+        K_gtsam,
+    )
+
+
+def _stereo_obs_from_feature(frame_data, left_feature_idx, stereo_match):
+    """Return GTSAM stereo observation tuple (uL, uR, v)."""
+    kp_l = frame_data["kp_left"][left_feature_idx]
+    kp_r = frame_data["kp_right"][stereo_match.trainIdx]
+    return (kp_l.pt[0], kp_r.pt[0], kp_l.pt[1])
+
+
+def estimate_loop_relative_pose_bundle(db, c_i, c_n, inlier_matches=None,
+                                       max_landmarks=120,
+                                       min_landmarks=8,
+                                       output_dir="."):
+    """
+    Q7.3: Estimate a loop-closure relative pose c_i -> c_n with a small 2-frame stereo BA.
+
+    Returned relative_pose convention matches the pose graph convention used in exercise 6:
+        relative_pose = pose_i.between(pose_n)
+    where both poses are GTSAM camera-to-world Pose3 objects.
+    Since pose_i is fixed to identity in this local bundle, the marginal covariance of pose_n
+    is the required conditional covariance of the relative measurement.
+    """
+    K_gtsam = init_gtsam_stereo_calibration()
+    K_mat, _, _ = read_cameras()
+
+    data_i = run_single_pair(c_i, display=False, plot_3d=False)
+    data_n = run_single_pair(c_n, display=False, plot_3d=False)
+
+    # If matches were not supplied, recompute exactly the same visual verification stage.
+    if inlier_matches is None:
+        bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+        knn = bf_matcher.knnMatch(data_i["des_left"], data_n["des_left"], k=2)
+        good = [m for m, nn in knn if m.distance < 0.7 * nn.distance]
+        if len(good) < 4:
+            raise RuntimeError(f"Loop {c_i}->{c_n}: not enough AKAZE matches")
+        pts_i = np.array([data_i["kp_left"][m.queryIdx].pt for m in good], dtype=np.float32)
+        pts_n = np.array([data_n["kp_left"][m.trainIdx].pt for m in good], dtype=np.float32)
+        _, mask = cv2.findFundamentalMat(pts_i, pts_n, cv2.FM_RANSAC, 3.0, 0.99)
+        if mask is None:
+            raise RuntimeError(f"Loop {c_i}->{c_n}: fundamental matrix failed")
+        inlier_matches = [good[k] for k in range(len(good)) if mask[k][0] == 1]
+
+    i_q_to_pt = _left_stereo_query_to_point_index(data_i)
+    i_q_to_stereo = _left_stereo_query_to_match(data_i)
+    n_q_to_stereo = _left_stereo_query_to_match(data_n)
+
+    usable = []
+    for m in inlier_matches:
+        if m.queryIdx not in i_q_to_pt:
+            continue
+        if m.queryIdx not in i_q_to_stereo:
+            continue
+        if m.trainIdx not in n_q_to_stereo:
+            continue
+        X_i = np.array(data_i["points_3d"][i_q_to_pt[m.queryIdx]], dtype=np.float64).reshape(3)
+        if np.all(np.isfinite(X_i)) and 2.0 < X_i[2] < 120.0:
+            usable.append((m, X_i))
+
+    if len(usable) < min_landmarks:
+        raise RuntimeError(f"Loop {c_i}->{c_n}: only {len(usable)} usable stereo landmarks")
+
+    usable = sorted(usable, key=lambda item: item[0].distance)[:max_landmarks]
+
+    # PnP gives X_n = R_ni * X_i + t_ni. For GTSAM c2w pose of n in i coordinates,
+    # use the inverse: X_i = R_ni^T * X_n - R_ni^T t_ni.
+    obj_pts = np.array([X for _, X in usable], dtype=np.float32)
+    img_pts = np.array([data_n["kp_left"][m.trainIdx].pt for m, _ in usable], dtype=np.float32)
+    success, rvec, tvec, pnp_inliers = cv2.solvePnPRansac(
+        obj_pts, img_pts, K_mat, None,
+        iterationsCount=200,
+        reprojectionError=3.0,
+        confidence=0.99,
+        flags=cv2.SOLVEPNP_EPNP,
+    )
+    if not success or pnp_inliers is None or len(pnp_inliers) < min_landmarks:
+        raise RuntimeError(f"Loop {c_i}->{c_n}: PnP failed")
+
+    R_ni, _ = cv2.Rodrigues(rvec)
+    t_ni = tvec.reshape(3)
+    init_pose_n = gtsam.Pose3(
+        gtsam.Rot3(R_ni.T),
+        gtsam.Point3(*(-R_ni.T @ t_ni).reshape(3)),
+    )
+
+    graph = gtsam.NonlinearFactorGraph()
+    initial = gtsam.Values()
+    key_i = symbol("c", int(c_i))
+    key_n = symbol("c", int(c_n))
+    initial.insert(key_i, gtsam.Pose3())
+    initial.insert(key_n, init_pose_n)
+
+    # Fix first loop frame. The second pose covariance is therefore conditional on the first.
+    graph.add(gtsam.PriorFactorPose3(
+        key_i,
+        gtsam.Pose3(),
+        gtsam.noiseModel.Diagonal.Sigmas(np.ones(6) * 1e-6),
+    ))
+
+    meas_noise = gtsam.noiseModel.Robust.Create(
+        gtsam.noiseModel.mEstimator.Huber.Create(2.0),
+        gtsam.noiseModel.Isotropic.Sigma(3, 1.0),
+    )
+
+    kept_indices = set(int(x[0]) for x in pnp_inliers.reshape(-1, 1))
+    factor_landmarks = 0
+    for local_idx, (m, X_i) in enumerate(usable):
+        if local_idx not in kept_indices:
+            continue
+        point_key = symbol("q", int(10_000_000 + c_i * 10_000 + c_n * 10 + local_idx))
+        initial.insert(point_key, gtsam.Point3(float(X_i[0]), float(X_i[1]), float(X_i[2])))
+
+        obs_i = _stereo_obs_from_feature(data_i, m.queryIdx, i_q_to_stereo[m.queryIdx])
+        obs_n = _stereo_obs_from_feature(data_n, m.trainIdx, n_q_to_stereo[m.trainIdx])
+        graph.add(_safe_stereo_factor(obs_i, meas_noise, key_i, point_key, K_gtsam))
+        graph.add(_safe_stereo_factor(obs_n, meas_noise, key_n, point_key, K_gtsam))
+        factor_landmarks += 1
+
+    if factor_landmarks < min_landmarks:
+        raise RuntimeError(f"Loop {c_i}->{c_n}: only {factor_landmarks} BA landmarks after PnP filtering")
+
+    initial_error = graph.error(initial)
+    result = gtsam.LevenbergMarquardtOptimizer(graph, initial).optimize()
+    final_error = graph.error(result)
+
+    pose_i = result.atPose3(key_i)
+    pose_n = result.atPose3(key_n)
+    relative_pose = pose_i.between(pose_n)
+
+    marginals = gtsam.Marginals(graph, result)
+    rel_cov = marginals.marginalCovariance(key_n)
+    rel_cov = 0.5 * (rel_cov + rel_cov.T) + np.eye(6) * 1e-9
+
+    return {
+        "start_kf": int(c_i),
+        "end_kf": int(c_n),
+        "relative_pose": relative_pose,
+        "relative_covariance": rel_cov,
+        "num_ba_landmarks": factor_landmarks,
+        "initial_error": float(initial_error),
+        "final_error": float(final_error),
+        "graph": graph,
+        "initial": initial,
+        "result": result,
+    }
+
+
+def estimate_verified_loop_relative_poses(db, verified_loops, output_dir="."):
+    """Run Q7.3 for every verified loop from Q7.2."""
+    loop_measurements = []
+    for c_n, loops in verified_loops.items():
+        for loop in loops:
+            c_i = loop["candidate_kf"]
+            try:
+                m = estimate_loop_relative_pose_bundle(
+                    db, c_i, c_n,
+                    inlier_matches=loop.get("inlier_matches"),
+                    output_dir=output_dir,
+                )
+                loop_measurements.append(m)
+                print(f"[Q7.3] Loop {c_i}->{c_n}: BA landmarks={m['num_ba_landmarks']}, "
+                      f"error {m['initial_error']:.2f}->{m['final_error']:.2f}")
+            except Exception as e:
+                print(f"[Q7.3] Loop {c_i}->{c_n}: FAILED ({e})")
+    return loop_measurements
+
+
+def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurements,
+                                   output_dir=".", snapshot_count=4):
+    """Q7.4: add loop BetweenFactorPose3 constraints one-by-one and re-optimize."""
+
+    relative_poses_lc = dict(cleaned_poses)
+    relative_covs_lc = dict(cleaned_covs)
+
+    graph0, initial0 = build_and_initialize_pose_graph(cleaned_poses, cleaned_covs)
+    no_loop_result, no_loop_marginals = optimize_pose_graph(graph0, initial0)
+
+    snapshots = [("before_loop_closures", no_loop_result, no_loop_marginals, 0)]
+
+    total = len(loop_measurements)
+    snapshot_after = set()
+    if total > 0:
+        snapshot_after = set(
+            np.unique(
+                np.linspace(
+                    1,
+                    total,
+                    min(snapshot_count - 1, total),
+                    dtype=int
+                )
+            )
+        )
+
+    final_graph = graph0
+    final_result = no_loop_result
+    final_marginals = no_loop_marginals
+
+    added_count = 0
+
+    for meas in loop_measurements:
+
+        start_kf = meas["start_kf"]
+        end_kf = meas["end_kf"]
+        edge = (start_kf, end_kf)
+
+        pose_i = no_loop_result.atPose3(symbol("c", start_kf))
+        pose_j = no_loop_result.atPose3(symbol("c", end_kf))
+
+        pred_rel = pose_i.between(pose_j)
+        meas_rel = meas["relative_pose"]
+
+        pred_t = np.array(pred_rel.translation()).reshape(3)
+        meas_t = np.array(meas_rel.translation()).reshape(3)
+
+        diff_direct = np.linalg.norm(pred_t - meas_t)
+
+        rot_err = pred_rel.rotation().between(meas_rel.rotation()).rpy()
+        rot_err_norm = np.linalg.norm(rot_err)
+
+        print(
+            f"[Q7.4 debug] {start_kf}->{end_kf} "
+            f"direct={diff_direct:.2f} "
+            f"rot={rot_err_norm:.3f} "
+            f"landmarks={meas['num_ba_landmarks']}"
+        )
+
+        loop_pose = meas_rel
+
+        if meas["num_ba_landmarks"] < 40:
+            print("  rejected: too few landmarks")
+            continue
+
+        if diff_direct > 12.0:
+            print("  rejected: translation mismatch")
+            continue
+
+        if rot_err_norm > 0.35:
+            print("  rejected: rotation mismatch")
+            continue
+
+        loop_cov = np.array(meas["relative_covariance"])
+        loop_cov = 0.5 * (loop_cov + loop_cov.T)
+        loop_cov *= 100.0
+        loop_cov += np.eye(6) * 1e-3
+
+        relative_poses_lc[edge] = loop_pose
+        relative_covs_lc[edge] = loop_cov
+
+        added_count += 1
+
+        final_graph, initial = build_and_initialize_pose_graph(
+            relative_poses_lc,
+            relative_covs_lc
+        )
+
+        final_result, final_marginals = optimize_pose_graph(
+            final_graph,
+            initial
+        )
+
+        if added_count in snapshot_after:
+            snapshots.append(
+                (
+                    f"after_{added_count}_loop_closures",
+                    final_result,
+                    final_marginals,
+                    added_count
+                )
+            )
+    if snapshots[-1][3] != added_count:
+        snapshots.append(
+            (
+                f"after_{added_count}_loop_closures",
+                final_result,
+                final_marginals,
+                added_count
+            )
+        )
+    for name, values, marginals, idx in snapshots:
+        plot_pose_graph_2d_ellipses(
+            values,
+            marginals,
+            output_path=os.path.join(
+                output_dir,
+                f"task_7_5_snapshot_{idx:02d}_{name}.png"
+            ),
+            step=5,
+            sigma_scale=20,
+        )
+
+
+    return {
+        "no_loop_graph": graph0,
+        "no_loop_result": no_loop_result,
+        "no_loop_marginals": no_loop_marginals,
+        "loop_graph": final_graph,
+        "loop_result": final_result,
+        "loop_marginals": final_marginals,
+        "relative_poses_with_loops": relative_poses_lc,
+        "relative_covs_with_loops": relative_covs_lc,
+        "snapshots": snapshots,
+        "num_added_loop_closures": added_count,
+    }
+
+
+def _gt_positions_for_frame_ids(frame_ids):
+    gt = read_ground_truth_poses()
+    pts = []
+    valid = []
+    for f in frame_ids:
+        if f < len(gt):
+            R, t = gt[f]
+            pts.append(camera_center(R, t))
+            valid.append(f)
+    return valid, np.array(pts)
+
+
+def plot_pose_graph_vs_ground_truth(no_loop_values, loop_values, output_dir="."):
+    ids_no, pos_no = extract_pose_graph_positions(no_loop_values)
+    ids_lc, pos_lc = extract_pose_graph_positions(loop_values)
+    _, gt_no = _gt_positions_for_frame_ids(ids_no)
+
+    plt.figure(figsize=(10, 8))
+    plt.plot(pos_no[:, 0], pos_no[:, 2], "o-", markersize=3, linewidth=1, label="without loop closures")
+    plt.plot(pos_lc[:, 0], pos_lc[:, 2], "o-", markersize=3, linewidth=1, label="with loop closures")
+    if len(gt_no) == len(pos_no):
+        plt.plot(gt_no[:, 0], gt_no[:, 2], "--", linewidth=2, label="ground truth")
+    plt.title("Q7.5: Pose Graph vs Ground Truth")
+    plt.xlabel("X [m]")
+    plt.ylabel("Z [m]")
+    plt.axis("equal")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    path = os.path.join(output_dir, "task_7_5_pose_graph_vs_ground_truth.png")
+    plt.savefig(path, dpi=200)
+    plt.close()
+    print(f"Saved → {path}")
+
+
+def plot_absolute_location_error(no_loop_values, loop_values, output_dir="."):
+    ids_no, pos_no = extract_pose_graph_positions(no_loop_values)
+    ids_lc, pos_lc = extract_pose_graph_positions(loop_values)
+    _, gt_no = _gt_positions_for_frame_ids(ids_no)
+    _, gt_lc = _gt_positions_for_frame_ids(ids_lc)
+
+    err_no = np.linalg.norm(pos_no[:len(gt_no)] - gt_no, axis=1)
+    err_lc = np.linalg.norm(pos_lc[:len(gt_lc)] - gt_lc, axis=1)
+
+    plt.figure(figsize=(12, 5))
+    plt.plot(ids_no[:len(err_no)], err_no, marker="o", linewidth=1, label="without loop closures")
+    plt.plot(ids_lc[:len(err_lc)], err_lc, marker="o", linewidth=1, label="with loop closures")
+    plt.title("Q7.5: Absolute Location Error")
+    plt.xlabel("Keyframe")
+    plt.ylabel("Position error [m]")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    path = os.path.join(output_dir, "task_7_5_absolute_location_error.png")
+    plt.savefig(path, dpi=200)
+    plt.close()
+    print(f"Saved → {path}")
+
+
+def _uncertainty_trace(values, marginals):
+    ids, _ = extract_pose_graph_positions(values)
+    sizes = []
+    good_ids = []
+    for f in ids:
+        key = symbol("c", int(f))
+        try:
+            cov6 = marginals.marginalCovariance(key)
+            cov_xz = cov6[np.ix_([3, 5], [3, 5])]
+            sizes.append(float(np.sqrt(max(np.linalg.det(cov_xz), 0.0))))
+            good_ids.append(f)
+        except Exception:
+            pass
+    return good_ids, np.array(sizes)
+
+
+def plot_location_uncertainty_size(no_loop_values, no_loop_marginals,
+                                   loop_values, loop_marginals,
+                                   output_dir="."):
+    """Uncertainty size = sqrt(det(Sigma_xz)), i.e. 1-sigma covariance ellipse area / pi."""
+    ids_no, unc_no = _uncertainty_trace(no_loop_values, no_loop_marginals)
+    ids_lc, unc_lc = _uncertainty_trace(loop_values, loop_marginals)
+
+    plt.figure(figsize=(12, 5))
+    plt.plot(ids_no, unc_no, marker="o", linewidth=1, label="without loop closures")
+    plt.plot(ids_lc, unc_lc, marker="o", linewidth=1, label="with loop closures")
+    plt.title("Q7.5: Location Uncertainty Size")
+    plt.xlabel("Keyframe")
+    plt.ylabel(r"$\sqrt{det(\Sigma_{xz})}$ [m²]")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    path = os.path.join(output_dir, "task_7_5_location_uncertainty_size.png")
+    plt.savefig(path, dpi=200)
+    plt.close()
+    print(f"Saved → {path}")
