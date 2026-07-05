@@ -2994,6 +2994,7 @@ def estimate_loop_relative_pose_bundle(db, c_i, c_n, inlier_matches=None,
     data_i = run_single_pair(c_i, display=False, plot_3d=False)
     data_n = run_single_pair(c_n, display=False, plot_3d=False)
 
+
     # If matches were not supplied, recompute exactly the same visual verification stage.
     if inlier_matches is None:
         bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
