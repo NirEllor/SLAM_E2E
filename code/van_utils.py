@@ -3131,7 +3131,6 @@ def estimate_verified_loop_relative_poses(db, verified_loops, output_dir="."):
                 print(f"[Q7.3] Loop {c_i}->{c_n}: FAILED ({e})")
     return loop_measurements
 
-
 def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurements,
                                    output_dir=".", snapshot_count=4):
     """Q7.4: add loop BetweenFactorPose3 constraints one-by-one and re-optimize."""
@@ -3144,34 +3143,21 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
 
     snapshots = [("before_loop_closures", no_loop_result, no_loop_marginals, 0)]
 
-    total = len(loop_measurements)
-    snapshot_after = set()
-    if total > 0:
-        snapshot_after = set(
-            np.unique(
-                np.linspace(
-                    1,
-                    total,
-                    min(snapshot_count - 1, total),
-                    dtype=int
-                )
-            )
-        )
-
     final_graph = graph0
     final_result = no_loop_result
     final_marginals = no_loop_marginals
+    current_initial = no_loop_result
 
     added_count = 0
 
     for meas in loop_measurements:
-
         start_kf = meas["start_kf"]
         end_kf = meas["end_kf"]
         edge = (start_kf, end_kf)
 
-        pose_i = no_loop_result.atPose3(symbol("c", start_kf))
-        pose_j = no_loop_result.atPose3(symbol("c", end_kf))
+        # Compare against CURRENT optimized result, not always no_loop_result
+        pose_i = final_result.atPose3(symbol("c", start_kf))
+        pose_j = final_result.atPose3(symbol("c", end_kf))
 
         pred_rel = pose_i.between(pose_j)
         meas_rel = meas["relative_pose"]
@@ -3179,25 +3165,22 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
         pred_t = np.array(pred_rel.translation()).reshape(3)
         meas_t = np.array(meas_rel.translation()).reshape(3)
 
-        diff_direct = np.linalg.norm(pred_t - meas_t)
-
+        trans_err = np.linalg.norm(pred_t - meas_t)
         rot_err = pred_rel.rotation().between(meas_rel.rotation()).rpy()
         rot_err_norm = np.linalg.norm(rot_err)
 
         print(
             f"[Q7.4 debug] {start_kf}->{end_kf} "
-            f"direct={diff_direct:.2f} "
-            f"rot={rot_err_norm:.3f} "
+            f"trans_err={trans_err:.2f} "
+            f"rot_err={rot_err_norm:.3f} "
             f"landmarks={meas['num_ba_landmarks']}"
         )
 
-        loop_pose = meas_rel
-
         if meas["num_ba_landmarks"] < 40:
-            print("  rejected: too few landmarks")
+            print("  rejected: too few BA landmarks")
             continue
 
-        if diff_direct > 12.0:
+        if trans_err > 15.0:
             print("  rejected: translation mismatch")
             continue
 
@@ -3205,45 +3188,80 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
             print("  rejected: rotation mismatch")
             continue
 
-        loop_cov = np.array(meas["relative_covariance"])
+        # Very important: make loop closures conservative.
+        # BA marginal covariance is too optimistic for pose-graph loop factors.
+        loop_cov = np.array(meas["relative_covariance"], dtype=np.float64)
         loop_cov = 0.5 * (loop_cov + loop_cov.T)
-        loop_cov *= 100.0
-        loop_cov += np.eye(6) * 1e-3
 
-        relative_poses_lc[edge] = loop_pose
+        loop_cov *= 10000.0
+
+        # GTSAM Pose3 tangent order is rotation first, translation second.
+        min_rot_sigma = 0.15      # rad
+        min_trans_sigma = 8.0     # meters
+        floor = np.diag([
+            min_rot_sigma ** 2,
+            min_rot_sigma ** 2,
+            min_rot_sigma ** 2,
+            min_trans_sigma ** 2,
+            min_trans_sigma ** 2,
+            min_trans_sigma ** 2,
+        ])
+
+        loop_cov = loop_cov + floor + np.eye(6) * 1e-9
+
+        relative_poses_lc[edge] = meas_rel
         relative_covs_lc[edge] = loop_cov
 
         added_count += 1
 
-        final_graph, initial = build_and_initialize_pose_graph(
-            relative_poses_lc,
-            relative_covs_lc
-        )
+        final_graph = build_pose_graph(relative_poses_lc, relative_covs_lc)
 
         final_result, final_marginals = optimize_pose_graph(
             final_graph,
-            initial
+            current_initial
         )
 
-        if added_count in snapshot_after:
-            snapshots.append(
-                (
-                    f"after_{added_count}_loop_closures",
-                    final_result,
-                    final_marginals,
-                    added_count
-                )
-            )
-    if snapshots[-1][3] != added_count:
-        snapshots.append(
-            (
-                f"after_{added_count}_loop_closures",
-                final_result,
-                final_marginals,
-                added_count
-            )
-        )
-    for name, values, marginals, idx in snapshots:
+        current_initial = final_result
+
+        print(f"  accepted loop #{added_count}: {edge}")
+
+    # Choose 4 meaningful snapshots: before, early, middle, final
+    snapshots_to_plot = [("before_loop_closures", no_loop_result, no_loop_marginals, 0)]
+
+    if added_count > 0:
+        for target in np.unique(np.linspace(1, added_count, min(snapshot_count - 1, added_count), dtype=int)):
+            # Rebuild progressively up to this target
+            temp_poses = dict(cleaned_poses)
+            temp_covs = dict(cleaned_covs)
+            temp_initial = no_loop_result
+            temp_result = no_loop_result
+            temp_marginals = no_loop_marginals
+            temp_graph = graph0
+
+            accepted_so_far = 0
+
+            for meas in loop_measurements:
+                edge = (meas["start_kf"], meas["end_kf"])
+
+                if edge not in relative_poses_lc or edge in cleaned_poses:
+                    continue
+
+                temp_poses[edge] = relative_poses_lc[edge]
+                temp_covs[edge] = relative_covs_lc[edge]
+
+                accepted_so_far += 1
+
+                temp_graph = build_pose_graph(temp_poses, temp_covs)
+                temp_result, temp_marginals = optimize_pose_graph(temp_graph, temp_initial)
+                temp_initial = temp_result
+
+                if accepted_so_far == target:
+                    snapshots_to_plot.append(
+                        (f"after_{target}_loop_closures", temp_result, temp_marginals, int(target))
+                    )
+                    break
+
+    for name, values, marginals, idx in snapshots_to_plot:
         plot_pose_graph_2d_ellipses(
             values,
             marginals,
@@ -3255,7 +3273,6 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
             sigma_scale=20,
         )
 
-
     return {
         "no_loop_graph": graph0,
         "no_loop_result": no_loop_result,
@@ -3265,9 +3282,10 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
         "loop_marginals": final_marginals,
         "relative_poses_with_loops": relative_poses_lc,
         "relative_covs_with_loops": relative_covs_lc,
-        "snapshots": snapshots,
+        "snapshots": snapshots_to_plot,
         "num_added_loop_closures": added_count,
     }
+
 
 
 def _gt_positions_for_frame_ids(frame_ids):

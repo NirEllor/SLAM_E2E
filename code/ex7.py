@@ -70,7 +70,8 @@ def q7_5_results(pg_results, loop_measurements, output_dir="."):
     print("\n" + "=" * 80)
     print("RUNNING: Q7.5 - FINAL PLOTS AND REPORT NUMBERS")
     print("=" * 80)
-    print(f"Successful loop closures detected: {len(loop_measurements)}")
+    print(f"Visually verified / estimated loop measurements: {len(loop_measurements)}")
+    print(f"Loop closure factors added to pose graph: {pg_results['num_added_loop_closures']}")
 
     lib.plot_pose_graph_vs_ground_truth(
         pg_results["no_loop_result"],
