@@ -19,14 +19,14 @@ def q7_1_detect_candidates(db, relative_poses, relative_covs, keyframes, mahalan
     return candidates
 
 
-def q7_2_consensus_matching(db, loop_candidates, inlier_threshold=25, output_dir="."):
+def q7_2_consensus_matching(db, loop_candidates, inlier_ratio_threshold=0.6, output_dir="."):
     print("\n" + "=" * 80)
     print("RUNNING: Q7.2 - CONSENSUS MATCHING (VISUAL VERIFICATION)")
     print("=" * 80)
 
     # Run visual verification via RANSAC fundamental matrix analysis
     verified_loops, total_verified = lib.verify_loop_closures_consensus(
-        db, loop_candidates, inlier_threshold, output_dir
+        db, loop_candidates, inlier_ratio_threshold, output_dir
     )
 
     print("\n" + "=" * 80)
@@ -112,19 +112,22 @@ if __name__ == "__main__":
     graph, initial = lib.build_and_initialize_pose_graph(cleaned_poses, cleaned_covs)
     optimized_values, marginals = lib.optimize_pose_graph(graph, initial)
 
+    # 3. Execute Step 7.1
     mahalanobis_threshold = 1000.0
     candidates = q7_1_detect_candidates(
         db, relative_poses, relative_covs, keyframes,
-        mahalanobis_threshold=mahalanobis_threshold,
-        output_dir=output_dir,
+        mahalanobis_threshold=mahalanobis_threshold
     )
-    lib.plot_loop_candidates(keyframes, candidates, optimized_values, output_dir=output_dir)
 
-    chosen_inlier_threshold = 25
+    # Plot loop shortcuts over the newly decoupled trajectory values
+    lib.plot_loop_candidates(keyframes, candidates, optimized_values, output_dir=".")
+
+    # 4. Execute Step 7.2
+    inlier_ratio_threshold = 0.75
     verified_loops = q7_2_consensus_matching(
         db, candidates,
-        inlier_threshold=chosen_inlier_threshold,
-        output_dir=output_dir,
+        inlier_ratio_threshold,
+        output_dir="."
     )
 
     loop_measurements = q7_3_relative_pose_estimation(

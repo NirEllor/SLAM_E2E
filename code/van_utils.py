@@ -2068,6 +2068,7 @@ def build_pose_graph(relative_poses, relative_covs):
             )
         )
 
+
     return graph
 
 
@@ -2856,17 +2857,24 @@ def plot_loop_candidates(keyframes, candidates, optimized_values, output_dir="."
     plt.legend(loc="upper left")
     plt.tight_layout()
 
-    output_path = os.path.join(output_dir, "task_7_1_loop_candidates_trajectory.png")
+    output_path = os.path.join(output_dir, "../outputs/task_7_1_loop_candidates_trajectory.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
     print(f"\n[Plot] Saved loop candidates visualization to: {output_path}")
 
 
-def verify_loop_closures_consensus(db, loop_candidates, inlier_threshold, output_dir):
-    """Performs AKAZE matching and Fundamental RANSAC verification to confirm loops."""
+def verify_loop_closures_consensus(db, loop_candidates, inlier_ratio_threshold, output_dir=None):
+    """
+    Performs AKAZE matching and Fundamental RANSAC verification to confirm loops.
+    Applies a dual-restraint criterion: combines BOTH Inlier Ratio (Lecture 7 concept)
+    and a minimum absolute inlier count to ensure geometric stability for the downstream Bundle.
+    """
     bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
     verified_loops = {}
     total_verified_loops = 0
+
+    # Minimum absolute number of inliers required to guarantee optimization stability in the next stage
+    MIN_ABSOLUTE_INLIERS = 20
 
     for c_n, cands in loop_candidates.items():
         if not cands:
@@ -2887,7 +2895,8 @@ def verify_loop_closures_consensus(db, loop_candidates, inlier_threshold, output
             knn_matches = bf_matcher.knnMatch(des_i, des_n, k=2)
             good_matches = [m for m, n in knn_matches if m.distance < 0.7 * n.distance]
 
-            if len(good_matches) < 4:
+            total_matches_count = len(good_matches)
+            if total_matches_count < 4:
                 continue
 
             pts_i = np.array([kp_i[m.queryIdx].pt for m in good_matches], dtype=np.float32)
@@ -2898,11 +2907,17 @@ def verify_loop_closures_consensus(db, loop_candidates, inlier_threshold, output
                 continue
 
             inliers_count = int(np.sum(mask))
-            print(
-                f"[Q7.2] Testing Link c_{c_n} -> c_{c_i}: Geometric Inliers = {inliers_count} (Required: {inlier_threshold})")
 
-            if inliers_count >= inlier_threshold:
-                print(f"  --> [SUCCESS] Loop Verified! Inliers: {inliers_count}")
+            # Calculate the inlier ratio relative to the initial filtered matches
+            inlier_ratio = inliers_count / total_matches_count
+
+            print(f"[Q7.2] Testing Link c_{c_n} -> c_{c_i}: Total Matches = {total_matches_count} | "
+                  f"Inliers = {inliers_count} | Ratio = {inlier_ratio * 100.0:.2f}% "
+                  f"(Required Ratio: {inlier_ratio_threshold * 100.0:.1f}%, Min Inliers: {MIN_ABSOLUTE_INLIERS})")
+
+            # Evaluate the dual-restraint condition: both sufficient ratio and minimal absolute count
+            if inlier_ratio >= inlier_ratio_threshold and inliers_count >= MIN_ABSOLUTE_INLIERS:
+                print(f"  --> [SUCCESS] Loop Verified! Ratio: {inlier_ratio * 100.0:.2f}%, Inliers: {inliers_count}")
 
                 inlier_matches = [good_matches[i] for i in range(len(good_matches)) if mask[i][0] == 1]
                 outlier_matches = [good_matches[i] for i in range(len(good_matches)) if mask[i][0] == 0]
@@ -2914,36 +2929,38 @@ def verify_loop_closures_consensus(db, loop_candidates, inlier_threshold, output
                 })
                 total_verified_loops += 1
 
-                img_i_color = cv2.cvtColor(img_i, cv2.COLOR_GRAY2RGB)
-                img_n_color = cv2.cvtColor(img_n, cv2.COLOR_GRAY2RGB)
+                # Render and save verification plots only if an output directory is explicitly provided
+                if output_dir is not None:
+                    img_i_color = cv2.cvtColor(img_i, cv2.COLOR_GRAY2RGB)
+                    img_n_color = cv2.cvtColor(img_n, cv2.COLOR_GRAY2RGB)
 
-                for match in outlier_matches:
-                    pt_i = tuple(map(int, kp_i[match.queryIdx].pt))
-                    pt_n = tuple(map(int, kp_n[match.trainIdx].pt))
-                    cv2.circle(img_i_color, pt_i, 3, (0, 255, 255), -1)
-                    cv2.circle(img_n_color, pt_n, 3, (0, 255, 255), -1)
+                    for match in outlier_matches:
+                        pt_i = tuple(map(int, kp_i[match.queryIdx].pt))
+                        pt_n = tuple(map(int, kp_n[match.trainIdx].pt))
+                        cv2.circle(img_i_color, pt_i, 3, (0, 255, 255), -1)
+                        cv2.circle(img_n_color, pt_n, 3, (0, 255, 255), -1)
 
-                for match in inlier_matches:
-                    pt_i = tuple(map(int, kp_i[match.queryIdx].pt))
-                    pt_n = tuple(map(int, kp_n[match.trainIdx].pt))
-                    cv2.circle(img_i_color, pt_i, 3, (255, 165, 0), -1)
-                    cv2.circle(img_n_color, pt_n, 3, (255, 165, 0), -1)
+                    for match in inlier_matches:
+                        pt_i = tuple(map(int, kp_i[match.queryIdx].pt))
+                        pt_n = tuple(map(int, kp_n[match.trainIdx].pt))
+                        cv2.circle(img_i_color, pt_i, 3, (255, 165, 0), -1)
+                        cv2.circle(img_n_color, pt_n, 3, (255, 165, 0), -1)
 
-                fig, axes = plt.subplots(2, 1, figsize=(15, 10))
-                axes[0].imshow(img_i_color)
-                axes[0].set_title(f"Image 1: Inliers (orange), Outliers (cyan) | Frame c_{c_i}")
-                axes[0].axis('off')
+                    fig, axes = plt.subplots(2, 1, figsize=(15, 10))
+                    axes[0].imshow(img_i_color)
+                    axes[0].set_title(f"Image 1: Inliers (orange), Outliers (cyan) | Frame c_{c_i}")
+                    axes[0].axis('off')
 
-                axes[1].imshow(img_n_color)
-                axes[1].set_title(
-                    f"Image 2: Inliers (orange), Outliers (cyan) | Frame c_{c_n} (Total Inliers: {inliers_count})")
-                axes[1].axis('off')
+                    axes[1].imshow(img_n_color)
+                    axes[1].set_title(
+                        f"Image 2: Ratio={inlier_ratio * 100.0:.1f}% | Inliers={inliers_count} | Frame c_{c_n}")
+                    axes[1].axis('off')
 
-                plt.tight_layout()
-                os.makedirs(output_dir, exist_ok=True)
-                out_img_path = os.path.join(output_dir, f"task_7_2_loop_{c_i}_{c_n}.png")
-                plt.savefig(out_img_path, dpi=200, bbox_inches='tight')
-                plt.close()
+                    plt.tight_layout()
+                    os.makedirs(output_dir, exist_ok=True)
+                    out_img_path = os.path.join(output_dir, f"task_7_2_loop_{c_i}_{c_n}.png")
+                    plt.savefig(out_img_path, dpi=200, bbox_inches='tight')
+                    plt.close()
 
     return verified_loops, total_verified_loops
 
@@ -2985,15 +3002,14 @@ def estimate_loop_relative_pose_bundle(db, c_i, c_n, inlier_matches=None,
     Returned relative_pose convention matches the pose graph convention used in exercise 6:
         relative_pose = pose_i.between(pose_n)
     where both poses are GTSAM camera-to-world Pose3 objects.
-    Since pose_i is fixed to identity in this local bundle, the marginal covariance of pose_n
-    is the required conditional covariance of the relative measurement.
+    Sinc e pose_i is fixed to identity in this local bundle, we estimate the relative
+    measurement covariance from the joint marginal information of pose_i and pose_n.
     """
     K_gtsam = init_gtsam_stereo_calibration()
     K_mat, _, _ = read_cameras()
 
     data_i = run_single_pair(c_i, display=False, plot_3d=False)
     data_n = run_single_pair(c_n, display=False, plot_3d=False)
-
 
     # If matches were not supplied, recompute exactly the same visual verification stage.
     if inlier_matches is None:
@@ -3095,9 +3111,20 @@ def estimate_loop_relative_pose_bundle(db, c_i, c_n, inlier_matches=None,
     pose_n = result.atPose3(key_n)
     relative_pose = pose_i.between(pose_n)
 
+
+
     marginals = gtsam.Marginals(graph, result)
-    rel_cov = marginals.marginalCovariance(key_n)
-    rel_cov = 0.5 * (rel_cov + rel_cov.T) + np.eye(6) * 1e-9
+
+    keys = gtsam.KeyVector()
+    keys.append(key_i)
+    keys.append(key_n)
+
+    information = marginals.jointMarginalInformation(keys).fullMatrix()
+
+    # Conditional covariance of pose_n given pose_i.
+    # This matches the approach in the reference code.
+    rel_cov = np.linalg.inv(information[-6:, -6:])
+
 
     return {
         "start_kf": int(c_i),
@@ -3132,6 +3159,7 @@ def estimate_verified_loop_relative_poses(db, verified_loops, output_dir="."):
                 print(f"[Q7.3] Loop {c_i}->{c_n}: FAILED ({e})")
     return loop_measurements
 
+
 def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurements,
                                    output_dir=".", snapshot_count=4):
     """Q7.4: add loop BetweenFactorPose3 constraints one-by-one and re-optimize."""
@@ -3142,80 +3170,38 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
     graph0, initial0 = build_and_initialize_pose_graph(cleaned_poses, cleaned_covs)
     no_loop_result, no_loop_marginals = optimize_pose_graph(graph0, initial0)
 
-    snapshots = [("before_loop_closures", no_loop_result, no_loop_marginals, 0)]
+    # separate graph for loop closures, so graph0 stays no-loop
+    final_graph, _ = build_and_initialize_pose_graph(cleaned_poses, cleaned_covs)
 
-    final_graph = graph0
     final_result = no_loop_result
     final_marginals = no_loop_marginals
     current_initial = no_loop_result
-
     added_count = 0
 
     for meas in loop_measurements:
-        start_kf = meas["start_kf"]
-        end_kf = meas["end_kf"]
+        start_kf = meas["end_kf"]
+        end_kf = meas["start_kf"]
         edge = (start_kf, end_kf)
 
-        # Compare against CURRENT optimized result, not always no_loop_result
-        pose_i = final_result.atPose3(symbol("c", start_kf))
-        pose_j = final_result.atPose3(symbol("c", end_kf))
+        meas_rel = meas["relative_pose"].inverse()
 
-        pred_rel = pose_i.between(pose_j)
-        meas_rel = meas["relative_pose"]
-
-        pred_t = np.array(pred_rel.translation()).reshape(3)
-        meas_t = np.array(meas_rel.translation()).reshape(3)
-
-        trans_err = np.linalg.norm(pred_t - meas_t)
-        rot_err = pred_rel.rotation().between(meas_rel.rotation()).rpy()
-        rot_err_norm = np.linalg.norm(rot_err)
-
-        print(
-            f"[Q7.4 debug] {start_kf}->{end_kf} "
-            f"trans_err={trans_err:.2f} "
-            f"rot_err={rot_err_norm:.3f} "
-            f"landmarks={meas['num_ba_landmarks']}"
-        )
-
-        if meas["num_ba_landmarks"] < 40:
-            print("  rejected: too few BA landmarks")
-            continue
-
-        if trans_err > 15.0:
-            print("  rejected: translation mismatch")
-            continue
-
-        if rot_err_norm > 0.35:
-            print("  rejected: rotation mismatch")
-            continue
-
-        # Very important: make loop closures conservative.
-        # BA marginal covariance is too optimistic for pose-graph loop factors.
         loop_cov = np.array(meas["relative_covariance"], dtype=np.float64)
         loop_cov = 0.5 * (loop_cov + loop_cov.T)
+        loop_cov = loop_cov + np.eye(6) * 1e-9
 
-        loop_cov *= 10000.0
+        noise_model = gtsam.noiseModel.Gaussian.Covariance(loop_cov)
 
-        # GTSAM Pose3 tangent order is rotation first, translation second.
-        min_rot_sigma = 0.15      # rad
-        min_trans_sigma = 8.0     # meters
-        floor = np.diag([
-            min_rot_sigma ** 2,
-            min_rot_sigma ** 2,
-            min_rot_sigma ** 2,
-            min_trans_sigma ** 2,
-            min_trans_sigma ** 2,
-            min_trans_sigma ** 2,
-        ])
-
-        loop_cov = loop_cov + floor + np.eye(6) * 1e-9
+        final_graph.add(
+            gtsam.BetweenFactorPose3(
+                symbol("c", start_kf),
+                symbol("c", end_kf),
+                meas_rel,
+                noise_model
+            )
+        )
 
         relative_poses_lc[edge] = meas_rel
         relative_covs_lc[edge] = loop_cov
-
-        added_count += 1
-
-        final_graph = build_pose_graph(relative_poses_lc, relative_covs_lc)
 
         final_result, final_marginals = optimize_pose_graph(
             final_graph,
@@ -3223,8 +3209,9 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
         )
 
         current_initial = final_result
+        added_count += 1
 
-        print(f"  accepted loop #{added_count}: {edge}")
+        print(f"accepted loop #{added_count}: {edge}")
 
     # Choose 4 meaningful snapshots: before, early, middle, final
     snapshots_to_plot = [("before_loop_closures", no_loop_result, no_loop_marginals, 0)]
@@ -3242,7 +3229,7 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
             accepted_so_far = 0
 
             for meas in loop_measurements:
-                edge = (meas["start_kf"], meas["end_kf"])
+                edge = (meas["end_kf"], meas["start_kf"])
 
                 if edge not in relative_poses_lc or edge in cleaned_poses:
                     continue
@@ -3286,7 +3273,6 @@ def add_loop_closures_and_optimize(cleaned_poses, cleaned_covs, loop_measurement
         "snapshots": snapshots_to_plot,
         "num_added_loop_closures": added_count,
     }
-
 
 
 def _gt_positions_for_frame_ids(frame_ids):

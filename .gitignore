@@ -1,10 +1,7 @@
 *.pkl
 *.pickle
 __pycache__/
-outputs/
-outputs_ex7/
 .venv/
 gtsam_venv/
 wsl_venv/
 .idea/
-*.png

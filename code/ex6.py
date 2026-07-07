@@ -50,7 +50,7 @@ def q6_2(db, relative_poses, relative_covs, output_dir="."):
     lib.plot_pose_graph_trajectory(
         initial,
         title="6.2: Initial Pose Graph Trajectory (Fixed Gaps)",
-        output_path=os.path.join(output_dir, "task_6_2_initial_pose_graph.png")
+        output_path=os.path.join(output_dir, "../outputs/task_6_2_initial_pose_graph.png")
     )
 
     # 4. Optimize
@@ -61,13 +61,13 @@ def q6_2(db, relative_poses, relative_covs, output_dir="."):
     lib.plot_pose_graph_trajectory(
         result,
         title="6.2: Optimized Pose Graph Trajectory",
-        output_path=os.path.join(output_dir, "task_6_2_optimized_pose_graph.png")
+        output_path=os.path.join(output_dir, "../outputs/task_6_2_optimized_pose_graph.png")
     )
     lib.plot_pose_graph_with_covariances(
         result,
         marginals,
         title="6.2: Optimized Pose Graph With Final Marginal Covariances",
-        output_path=os.path.join(output_dir, "task_6_2_pose_graph_covariances.png"),
+        output_path=os.path.join(output_dir, "../outputs/task_6_2_pose_graph_covariances.png"),
         covariance_step=5,
     )
     lib.plot_pose_graph_2d_ellipses(
