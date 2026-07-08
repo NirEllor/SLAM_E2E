@@ -310,7 +310,6 @@ def q5_4(db):
     last_bundle_result = None
     failed_bundles = 0
 
-    # נשמור את וקטורי ההעתקה של ה-PnP הראשוני (מתוך db.camera_poses) כדי לחשב scale יחסי ריאלי
     pnp_distances = []
     for sf, ef in bundle_windows:
         R_s, t_s = db.camera_poses[sf]
@@ -324,7 +323,6 @@ def q5_4(db):
     for i, (start_frame, end_frame) in enumerate(bundle_windows):
         print(f"Solving bundle {start_frame}->{end_frame}", flush=True)
         
-        # חישוב מרחק ה-PnP המשוער לחלון הנוכחי כעוגן גיאומטרי
         R_s, t_s = db.camera_poses[start_frame]
         R_e, t_e = db.camera_poses[end_frame]
         pnp_dist = np.linalg.norm(lib.camera_center(R_e, t_e) - lib.camera_center(R_s, t_s))
@@ -338,11 +336,9 @@ def q5_4(db):
             start_global_pose = global_keyframe_poses[start_frame]
             relative_pose = bundle_result["relative_pose"]
             
-            # --- תיקון קנה מידה (Scale Drift Adjustment) ---
             t_vector = relative_pose.translation()
             ba_dist = np.linalg.norm(t_vector)
             
-            # אם ה-BA כיווץ את החלון בצורה קיצונית (מתחת ל-40% ממרחק ה-PnP המשוער), נתקן את ה-Scale
             if ba_dist < 0.4 * pnp_dist and ba_dist > 0:
                 scale_factor = pnp_dist / ba_dist
                 corrected_t = t_vector * scale_factor
@@ -355,7 +351,6 @@ def q5_4(db):
             end_global_pose = start_global_pose.compose(relative_pose)
             global_keyframe_poses[end_frame] = end_global_pose
 
-            # שמירת הלנדמרקס הגלובליים
             optimized_landmark_ids = bundle_result["optimized_landmark_ids"]
             points_local = bundle_result["optimized_points_local"]
             for track_id, p_local in zip(optimized_landmark_ids, points_local):
@@ -366,14 +361,10 @@ def q5_4(db):
             failed_bundles += 1
             print(f"[Warning] Bundle {start_frame}->{end_frame} failed: {e}")
 
-            # --- תיקון Gap חסין (Dead Reckoning Fallback) ---
-            # במקום להישאר במקום (0 תנועה), נשתמש בטרנספורמציה המשוערת מה-PnP של ה-DB כדי להמשיך להתקדם
             start_global_pose = global_keyframe_poses[start_frame]
             
-            # חילוץ רוטציה והעתקה יחסית מה-PnP ב-DB
             R_rel = R_e @ R_s.T
             t_rel = t_e - R_e @ R_s.T @ t_s
-            # מעבר לקואורדינטות מצלמה (c2w) כפי ש-GTSAM מצפה
             R_gtsam = R_rel.T
             t_gtsam = -R_rel.T @ t_rel
             
@@ -393,7 +384,6 @@ def q5_4(db):
 
     all_points_global = list(global_landmarks_dict.values())
 
-    # קריאה לפונקציות הדיאגנוסטיקה והציור המקוריות
     lib.debug_coordinate_system_alignment(keyframes, global_keyframe_poses)
     lib.debug_scale_drift(keyframes, global_keyframe_poses)
     
