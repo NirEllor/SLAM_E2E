@@ -5,3 +5,4 @@ __pycache__/
 gtsam_venv/
 wsl_venv/
 .idea/
+code/tracking_db.pkl
