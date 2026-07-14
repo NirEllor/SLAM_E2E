@@ -1861,7 +1861,7 @@ def plot_loop_candidates(keyframes, candidates, optimized_values, output_dir="."
     plt.legend(loc="upper left")
     plt.tight_layout()
 
-    output_path = os.path.join(output_dir, "../outputs/task_7_1_loop_candidates_trajectory.png")
+    output_path = os.path.join(output_dir, "../../outputs/task_7_1_loop_candidates_trajectory.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
 
