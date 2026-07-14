@@ -1,12 +1,9 @@
 # ex5.py
 import os
 import random
-import pickle
 import numpy as np
-import matplotlib.pyplot as plt
 import gtsam
 from gtsam import symbol
-from gtsam.utils import plot as gtsam_plot
 import van_utils as lib
 
 output_dir = "./outputs"

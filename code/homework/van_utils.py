@@ -569,13 +569,6 @@ def add_feature_to_db(db, frame_id, feature_idx, track_id, observation):
     )
 
 
-def get_or_create_track(db, frame_id, feature_idx):
-    """
-    Retrieves existing track ID or generates a new track entry for a feature point.
-    """
-    if db.has_feature(frame_id, feature_idx):
-        return db.get_track_of_feature(frame_id, feature_idx)
-    return db.create_track()
 
 
 def compute_tracking_statistics(db):
@@ -733,15 +726,6 @@ def plot_track_length_histogram(db, min_length=2):
     plt.tight_layout()
 
 
-def project_stereo_point(K, R, t, t_stereo, X):
-    """
-    Projects a 3D point into left and right image plane coordinates.
-    """
-    P_left = K @ np.hstack([R, t.reshape(3, 1)])
-    P_right = K @ np.hstack([R, (t.reshape(3) + t_stereo.reshape(3)).reshape(3, 1)])
-    return project_point(P_left, X), project_point(P_right, X)
-
-
 def build_data(num_frames):
     """
     Constructs the long-term TrackingDB object by matching features sequentially across frames.
@@ -839,6 +823,98 @@ def load_or_build_db(force_rebuild=False, num_frames=None):
         pickle.dump(db, f)
     return db
 
+
+def select_long_track(db, min_length=10):
+    """
+    Randomly selects a track with at least min_length observations.
+    Raises RuntimeError if no such track exists.
+    """
+    long_tracks = [t_id for t_id in db.track_to_frames if len(db.frames(t_id)) >= min_length]
+    if not long_tracks:
+        raise RuntimeError(f"No structural track found with an observation lifetime >= {min_length} frames.")
+    return random.choice(long_tracks)
+
+
+def prepare_stereo_projection_matrices(K, m_left0, m_right0, R_w2c, t_w2c):
+    """
+    Constructs stereo projection matrices for world-to-camera coordinates.
+    Returns P_left and P_right after rotating stereo baseline into camera frame.
+    """
+    t_stereo = np.linalg.inv(K) @ m_right0[:, 3]
+    P_left = K @ np.hstack([R_w2c, t_w2c])
+    P_right = K @ np.hstack([R_w2c, t_w2c + R_w2c @ t_stereo.reshape(3, 1)])
+    return P_left, P_right
+
+
+def triangulate_track_reference_point(db, track_id, first_frame_id, K, m_left0, m_right0):
+    """
+    Triangulates the 3D reference world coordinate from the first observation of a track.
+    Uses the first frame's ground truth pose to establish the initial triangulation.
+    """
+    obs_first = db.observation(first_frame_id, track_id)
+    gt_poses = read_ground_truth_poses()
+
+    R_first_gt, t_first_gt = gt_poses[first_frame_id]
+    R_first_w2c = R_first_gt.T
+    t_first_w2c = -R_first_gt.T @ t_first_gt.reshape(3, 1)
+
+    P_L_first, P_R_first = prepare_stereo_projection_matrices(K, m_left0, m_right0, R_first_w2c, t_first_w2c)
+
+    p_left_first = np.array([obs_first.x_left, obs_first.y])
+    p_right_first = np.array([obs_first.x_right, obs_first.y])
+
+    return triangulate_point_linear(p_left_first, p_right_first, P_L_first, P_R_first)
+
+
+def compute_track_reprojection_errors(db, track_id, frames, X_world, K, m_left0, m_right0):
+    """
+    Computes left/right reprojection errors for a 3D point across all frames in a track.
+    Returns lists of left_errors, right_errors, and frame indices.
+    """
+    gt_poses = read_ground_truth_poses()
+    left_errors = []
+    right_errors = []
+
+    for frame_id in frames:
+        obs = db.observation(frame_id, track_id)
+        R_curr_gt, t_curr_gt = gt_poses[frame_id]
+
+        R_curr_w2c = R_curr_gt.T
+        t_curr_w2c = -R_curr_gt.T @ t_curr_gt.reshape(3, 1)
+
+        P_left, P_right = prepare_stereo_projection_matrices(K, m_left0, m_right0, R_curr_w2c, t_curr_w2c)
+
+        proj_l = project_point(P_left, X_world)
+        proj_r = project_point(P_right, X_world)
+
+        obs_l = np.array([obs.x_left, obs.y])
+        obs_r = np.array([obs.x_right, obs.y])
+
+        err_l = np.linalg.norm(proj_l - obs_l)
+        err_r = np.linalg.norm(proj_r - obs_r)
+
+        left_errors.append(err_l)
+        right_errors.append(err_r)
+
+    return left_errors, right_errors
+
+
+def plot_track_reprojection_error_analysis(frames, left_errors, right_errors):
+    """
+    Plots left and right reprojection errors across track frames.
+    """
+    distances_from_reference = list(range(len(frames)))
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(distances_from_reference, left_errors, label='Left Channel Residuals', color='#2F4F4F', linewidth=2)
+    plt.plot(distances_from_reference, right_errors, label='Right Channel Residuals', color='#FFA500', linewidth=2)
+
+    plt.title("PnP - projection error vs track length")
+    plt.xlabel("distance from reference (frames)")
+    plt.ylabel("projection error (pixels)")
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.legend()
+    plt.tight_layout()
 
 
 # =============================================================================
