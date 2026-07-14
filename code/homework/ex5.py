@@ -384,9 +384,7 @@ def q5_4(db):
 
     all_points_global = list(global_landmarks_dict.values())
 
-    lib.debug_coordinate_system_alignment(keyframes, global_keyframe_poses)
-    lib.debug_scale_drift(keyframes, global_keyframe_poses)
-    
+
     lib.plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global, output_dir=output_dir)
     lib.plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_dir=output_dir)
 

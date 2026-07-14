@@ -552,6 +552,7 @@ def q3(idx=0):
     }
 
 def benchmark_tracking_configs(idx=0):
+    #TODO Move this function to utils or delete it
     """
     High-level utility function to evaluate alternative tracking configuration parameters,
     detector types, and variant PnP calculation methods. Moved to van_utils library layer.

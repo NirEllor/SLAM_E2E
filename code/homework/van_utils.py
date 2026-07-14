@@ -487,6 +487,55 @@ def plot_trajectory(est_positions, gt_positions):
     plt.grid(True)
 
 
+def run_single_pair(idx=0, display=False, plot_3d=True):
+    """
+    Executes feature detection, matching, epipolar filtering, and triangulation for a single frame.
+    """
+    if display:
+        print(f"\n========== Processing Frame {idx} Pipeline ==========")
+
+    img1, img2 = read_images(idx)
+    kp1, des1 = get_akaze_features(img1)
+    kp2, des2 = get_akaze_features(img2)
+
+    assert len(kp1) >= 500 and len(kp2) >= 500, f"Insufficient feature count in frame {idx}!"
+
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    matches = bf.match(des1, des2)
+
+    if display:
+        draw_matches_custom(img1, kp1, img2, kp2, matches, f"Frame {idx}: Raw Match Overlap Vectors")
+        deviations = compute_rectified_stereo_deviations(kp1, kp2, matches)
+        plot_deviation_histogram(deviations)
+        print_large_deviation_percentage(deviations, threshold=2)
+
+    inliers, outliers = split_matches_by_rectified_pattern(kp1, kp2, matches, threshold=2)
+
+    if display:
+        draw_inliers_outliers(img1, kp1, img2, kp2, inliers, outliers)
+
+    k, m1, m2 = read_cameras()
+    points1, points2 = get_matched_points(kp1, kp2, inliers)
+    points_3d = triangulate_points_opencv(points1, points2, m1, m2)
+
+    valid_depth_mask = (points_3d[:, 2] > 0) & (points_3d[:, 2] < 350)
+    filtered_inliers = [inliers[i] for i in range(len(inliers)) if valid_depth_mask[i]]
+    filtered_points_3d = points_3d[valid_depth_mask]
+
+    if display or plot_3d:
+        plot_3d_points(filtered_points_3d, title=f"Frame {idx}: Triangulated Landmark Points (<350m)")
+
+    des_left_inliers = np.array([des1[m.queryIdx] for m in filtered_inliers]) if filtered_inliers else np.empty((0, des1.shape[1]))
+    des_right_inliers = np.array([des2[m.trainIdx] for m in filtered_inliers]) if filtered_inliers else np.empty((0, des2.shape[1]))
+
+    return {
+        'img_left': img1, 'img_right': img2, 'kp_left': kp1, 'kp_right': kp2,
+        'des_left': des1, 'des_right': des2, 'des_left_inliers': des_left_inliers,
+        'des_right_inliers': des_right_inliers, 'stereo_inliers': filtered_inliers,
+        'points_3d': filtered_points_3d
+    }
+
+
 # =============================================================================
 # EXERCISE 4: LONG-TERM FEATURE TRACKING DATABASE
 # =============================================================================
@@ -562,23 +611,6 @@ def print_tracking_statistics(stats):
     print(f"Mean number of frame links: {stats['mean_frame_links']:.2f}")
 
 
-def debug_tracking_database(db, frame_id=10):
-    """
-    Prints diagnostic metadata about track associations at a given frame.
-    """
-    print("Frames:", db.frame_num())
-    print("Tracks:", db.track_num())
-    tracks_in_frame = db.tracks(frame_id)
-    print("Tracks in frame:", tracks_in_frame)
-
-    if tracks_in_frame:
-        track_id = tracks_in_frame[0]
-        print("Example track id:", track_id)
-        print("Frames of example track:", db.frames(track_id))
-
-    longest_track = max(db.track_to_frames, key=lambda t: len(db.frames(t)))
-    print("Longest track id:", longest_track)
-    print("Length:", len(db.frames(longest_track)))
 
 
 def select_track_by_min_length(db, min_length=6):
@@ -710,53 +742,103 @@ def project_stereo_point(K, R, t, t_stereo, X):
     return project_point(P_left, X), project_point(P_right, X)
 
 
-def run_single_pair(idx=0, display=False, plot_3d=True):
+def build_data(num_frames):
     """
-    Executes feature detection, matching, epipolar filtering, and triangulation for a single frame.
+    Constructs the long-term TrackingDB object by matching features sequentially across frames.
     """
-    if display:
-        print(f"\n========== Processing Frame {idx} Pipeline ==========")
+    db = TrackingDB()
+    inlier_percentages = []
 
-    img1, img2 = read_images(idx)
-    kp1, des1 = get_akaze_features(img1)
-    kp2, des2 = get_akaze_features(img2)
+    R_global, t_global = np.eye(3), np.zeros((3, 1))
+    camera_poses = [(R_global.copy(), t_global.copy())]
 
-    assert len(kp1) >= 500 and len(kp2) >= 500, f"Insufficient feature count in frame {idx}!"
+    prev_data = run_single_pair(idx=0, display=False, plot_3d=False)
+    bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
 
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
-    matches = bf.match(des1, des2)
+    for idx in range(1, num_frames):
+        print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1}")
+        curr_data = run_single_pair(idx=idx, display=False, plot_3d=False)
 
-    if display:
-        draw_matches_custom(img1, kp1, img2, kp2, matches, f"Frame {idx}: Raw Match Overlap Vectors")
-        deviations = compute_rectified_stereo_deviations(kp1, kp2, matches)
-        plot_deviation_histogram(deviations)
-        print_large_deviation_percentage(deviations, threshold=2)
+        knn_matches = bf_matcher.knnMatch(prev_data["des_left"], curr_data["des_left"], k=2)
+        temporal_matches = [m for m, n in knn_matches if m.distance < 0.7 * n.distance]
 
-    inliers, outliers = split_matches_by_rectified_pattern(kp1, kp2, matches, threshold=2)
+        try:
+            correspondences = build_pnp_correspondences(prev_data, curr_data, temporal_matches)
+            if len(correspondences) < 4:
+                raise RuntimeError("Not enough correspondences for PnP-RANSAC.")
 
-    if display:
-        draw_inliers_outliers(img1, kp1, img2, kp2, inliers, outliers)
+            best_inliers, best_outliers, best_R, best_t = [], [], None, None
+            k_matrix, _, _ = read_cameras()
+            no_improvement, max_no_improvement = 0, 12
 
-    k, m1, m2 = read_cameras()
-    points1, points2 = get_matched_points(kp1, kp2, inliers)
-    points_3d = triangulate_points_opencv(points1, points2, m1, m2)
+            for _ in range(50):
+                sample = random.sample(correspondences, 4)
+                obj_pts = np.array([c["X"] for c in sample], dtype=np.float32)
+                img_pts = np.array([c["obs_left1"] for c in sample], dtype=np.float32)
 
-    valid_depth_mask = (points_3d[:, 2] > 0) & (points_3d[:, 2] < 350)
-    filtered_inliers = [inliers[i] for i in range(len(inliers)) if valid_depth_mask[i]]
-    filtered_points_3d = points_3d[valid_depth_mask]
+                success, rvec, tvec = cv2.solvePnP(obj_pts, img_pts, k_matrix, None, flags=cv2.SOLVEPNP_EPNP)
+                if not success:
+                    no_improvement += 1
+                    continue
 
-    if display or plot_3d:
-        plot_3d_points(filtered_points_3d, title=f"Frame {idx}: Triangulated Landmark Points (<350m)")
+                R_candidate, _ = cv2.Rodrigues(rvec)
+                inliers, outliers = evaluate_supporters(correspondences, prev_data, curr_data, R_candidate, tvec, threshold=2)
 
-    des_left_inliers = np.array([des1[m.queryIdx] for m in filtered_inliers]) if filtered_inliers else np.empty((0, des1.shape[1]))
-    des_right_inliers = np.array([des2[m.trainIdx] for m in filtered_inliers]) if filtered_inliers else np.empty((0, des2.shape[1]))
+                if len(inliers) > len(best_inliers):
+                    best_inliers, best_outliers, best_R, best_t = inliers, outliers, R_candidate, tvec
+                    no_improvement = 0
+                else:
+                    no_improvement += 1
 
-    return {
-        'img_left': img1, 'img_right': img2, 'kp_left': kp1, 'kp_right': kp2,
-        'des_left': des1, 'des_right': des2, 'des_left_inliers': des_left_inliers,
-        'des_right_inliers': des_right_inliers, 'stereo_inliers': filtered_inliers,
-        'points_3d': filtered_points_3d
-    }
+                if no_improvement >= max_no_improvement:
+                    break
+
+            if best_R is None:
+                raise RuntimeError("RANSAC failed to find a valid pose.")
+
+            total = len(best_inliers) + len(best_outliers)
+            inlier_percentages.append(100.0 * len(best_inliers) / total if total > 0 else 0.0)
+
+            R_global, t_global = compose_transform(R_global, t_global, best_R, best_t)
+
+        except RuntimeError as e:
+            print(f"PnP-RANSAC failure at frame link {idx - 1}->{idx}: {e}")
+            inlier_percentages.append(0.0)
+            best_inliers = []
+
+        ransac_temporal_matches = [c['temporal_match'] for c in best_inliers]
+        db.update_tracks(
+            idx, ransac_temporal_matches,
+            build_stereo_dict(prev_data), build_stereo_dict(curr_data),
+            prev_data, curr_data
+        )
+
+        camera_poses.append((R_global.copy(), t_global.copy()))
+        prev_data = curr_data
+
+    db.inlier_percentages = inlier_percentages
+    db.camera_poses = camera_poses
+    return db
+
+
+def load_or_build_db(force_rebuild=False, num_frames=None):
+    """
+    Loads pre-built TrackingDB pickle file or executes construction pipeline.
+    """
+    if num_frames is None:
+        num_frames = get_num_frames()
+
+    if os.path.exists(DB_PKL_PATH) and not force_rebuild:
+        print("Loading TrackingDB from pickle...")
+        with open(DB_PKL_PATH, "rb") as f:
+            return pickle.load(f)
+
+    print("Building TrackingDB from scratch...")
+    db = build_data(num_frames=num_frames)
+    with open(DB_PKL_PATH, "wb") as f:
+        pickle.dump(db, f)
+    return db
+
 
 
 # =============================================================================
@@ -1109,135 +1191,6 @@ def plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_di
     print(f"Max keyframe localization error: {np.max(errors):.3f} m")
 
 
-def build_data(num_frames):
-    """
-    Constructs the long-term TrackingDB object by matching features sequentially across frames.
-    """
-    db = TrackingDB()
-    inlier_percentages = []
-
-    R_global, t_global = np.eye(3), np.zeros((3, 1))
-    camera_poses = [(R_global.copy(), t_global.copy())]
-
-    prev_data = run_single_pair(idx=0, display=False, plot_3d=False)
-    bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
-
-    for idx in range(1, num_frames):
-        print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1}")
-        curr_data = run_single_pair(idx=idx, display=False, plot_3d=False)
-
-        knn_matches = bf_matcher.knnMatch(prev_data["des_left"], curr_data["des_left"], k=2)
-        temporal_matches = [m for m, n in knn_matches if m.distance < 0.7 * n.distance]
-
-        try:
-            correspondences = build_pnp_correspondences(prev_data, curr_data, temporal_matches)
-            if len(correspondences) < 4:
-                raise RuntimeError("Not enough correspondences for PnP-RANSAC.")
-
-            best_inliers, best_outliers, best_R, best_t = [], [], None, None
-            k_matrix, _, _ = read_cameras()
-            no_improvement, max_no_improvement = 0, 12
-
-            for _ in range(50):
-                sample = random.sample(correspondences, 4)
-                obj_pts = np.array([c["X"] for c in sample], dtype=np.float32)
-                img_pts = np.array([c["obs_left1"] for c in sample], dtype=np.float32)
-
-                success, rvec, tvec = cv2.solvePnP(obj_pts, img_pts, k_matrix, None, flags=cv2.SOLVEPNP_EPNP)
-                if not success:
-                    no_improvement += 1
-                    continue
-
-                R_candidate, _ = cv2.Rodrigues(rvec)
-                inliers, outliers = evaluate_supporters(correspondences, prev_data, curr_data, R_candidate, tvec, threshold=2)
-
-                if len(inliers) > len(best_inliers):
-                    best_inliers, best_outliers, best_R, best_t = inliers, outliers, R_candidate, tvec
-                    no_improvement = 0
-                else:
-                    no_improvement += 1
-
-                if no_improvement >= max_no_improvement:
-                    break
-
-            if best_R is None:
-                raise RuntimeError("RANSAC failed to find a valid pose.")
-
-            total = len(best_inliers) + len(best_outliers)
-            inlier_percentages.append(100.0 * len(best_inliers) / total if total > 0 else 0.0)
-
-            R_global, t_global = compose_transform(R_global, t_global, best_R, best_t)
-
-        except RuntimeError as e:
-            print(f"PnP-RANSAC failure at frame link {idx - 1}->{idx}: {e}")
-            inlier_percentages.append(0.0)
-            best_inliers = []
-
-        ransac_temporal_matches = [c['temporal_match'] for c in best_inliers]
-        db.update_tracks(
-            idx, ransac_temporal_matches,
-            build_stereo_dict(prev_data), build_stereo_dict(curr_data),
-            prev_data, curr_data
-        )
-
-        camera_poses.append((R_global.copy(), t_global.copy()))
-        prev_data = curr_data
-
-    db.inlier_percentages = inlier_percentages
-    db.camera_poses = camera_poses
-    return db
-
-
-def load_or_build_db(force_rebuild=False, num_frames=None):
-    """
-    Loads pre-built TrackingDB pickle file or executes construction pipeline.
-    """
-    if num_frames is None:
-        num_frames = get_num_frames()
-
-    if os.path.exists(DB_PKL_PATH) and not force_rebuild:
-        print("Loading TrackingDB from pickle...")
-        with open(DB_PKL_PATH, "rb") as f:
-            return pickle.load(f)
-
-    print("Building TrackingDB from scratch...")
-    db = build_data(num_frames=num_frames)
-    with open(DB_PKL_PATH, "wb") as f:
-        pickle.dump(db, f)
-    return db
-
-
-def debug_coordinate_system_alignment(keyframes, global_keyframe_poses):
-    """
-    Prints diagnostic alignment distances between estimated and ground truth frames.
-    """
-    gt_poses = read_ground_truth_poses()
-    print("\n[Debug coordinate system alignment]")
-
-    for kf in keyframes[:10]:
-        if kf not in global_keyframe_poses:
-            continue
-        est_t = pose_translation_np(global_keyframe_poses[kf])
-        gt_center = camera_center(*gt_poses[kf])
-        print(f"KF {kf} err est_t vs gt_center: {np.linalg.norm(est_t - gt_center):.3f} m")
-
-
-def debug_scale_drift(keyframes, global_keyframe_poses):
-    """
-    Calculates scale drift ratios between estimated and ground truth path step sizes.
-    """
-    gt_poses = read_ground_truth_poses()
-    est_positions = [pose_translation_np(global_keyframe_poses[kf]) for kf in keyframes if kf in global_keyframe_poses]
-    gt_positions = [camera_center(*gt_poses[kf]) for kf in keyframes if kf in global_keyframe_poses]
-
-    est_steps = np.linalg.norm(np.diff(np.array(est_positions), axis=0), axis=1)
-    gt_steps = np.linalg.norm(np.diff(np.array(gt_positions), axis=0), axis=1)
-
-    print("\n[Debug scale drift]")
-    print("Mean estimated step:", np.mean(est_steps))
-    print("Mean GT step:", np.mean(gt_steps))
-    print("Scale ratio est/gt:", np.sum(est_steps) / np.sum(gt_steps))
-
 
 # =============================================================================
 # GRAPH & BUNDLE PLOTTING UTILITIES
@@ -1511,68 +1464,6 @@ def plot_pose_graph_with_covariances(values, marginals, title, output_path, cova
     plt.savefig(output_path, dpi=200)
     plt.close()
 
-
-def debug_target_frame_geometry(db, start_frame=2840, end_frame=2860, target_frame=2860, max_tracks_per_window=150, output_dir="./outputs"):
-    """
-    Analyzes depth distribution, disparities, and pixel spread for target frames in BA windows.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    K_mat, P_left0, P_right0 = read_cameras()
-    fx = K_mat[0, 0]
-    baseline = init_gtsam_stereo_calibration().baseline()
-
-    window_frames = list(range(start_frame, end_frame + 1))
-    candidate_tracks = set()
-    for f_id in window_frames:
-        candidate_tracks.update(db.tracks(f_id))
-
-    guaranteed_tracks = set()
-    rng = random.Random(0)
-    for f_id in window_frames:
-        tracks_in_frame = list(db.tracks(f_id))
-        if tracks_in_frame:
-            guaranteed_tracks.update(rng.sample(tracks_in_frame, min(15, len(tracks_in_frame))))
-
-    remaining_slots = max_tracks_per_window - len(guaranteed_tracks)
-    all_candidates = list(set(candidate_tracks) - guaranteed_tracks)
-    final_tracks = list(guaranteed_tracks) + (rng.sample(all_candidates, min(remaining_slots, len(all_candidates))) if remaining_slots > 0 and all_candidates else [])
-
-    rows = []
-    for track_id in final_tracks:
-        track_frames = [f for f in db.frames(track_id) if f in window_frames]
-        if target_frame not in track_frames:
-            continue
-
-        obs_t = db.observation(target_frame, track_id)
-        if not valid_stereo_obs(obs_t, min_disp=1.0):
-            continue
-
-        X_cam = triangulate_point_linear(
-            np.array([obs_t.x_left, obs_t.y]),
-            np.array([obs_t.x_right, obs_t.y]),
-            P_left0, P_right0
-        )
-        disparity = obs_t.x_left - obs_t.x_right
-
-        rows.append({
-            "track_id": track_id, "num_frames_in_window": len(track_frames),
-            "x": float(obs_t.x_left), "y": float(obs_t.y), "x_right": float(obs_t.x_right),
-            "disparity": float(disparity),
-            "depth_triangulated": float(X_cam[2]) if np.all(np.isfinite(X_cam)) else np.nan,
-            "depth_formula": float(fx * baseline / disparity),
-        })
-
-    if not rows:
-        print("No valid target-frame observations found.")
-        return rows
-
-    finite_depths = np.array([r["depth_triangulated"] for r in rows], dtype=float)
-    finite_depths = finite_depths[np.isfinite(finite_depths)]
-
-    print(f"\nDebug geometry for frame {target_frame} ({start_frame}->{end_frame})")
-    print(f"Depth median: {np.median(finite_depths):.3f} m, max: {np.max(finite_depths):.3f} m")
-
-    return rows
 
 
 def run_and_plot_prior_sensitivity(db, c0_idx, ck_idx, output_dir):
