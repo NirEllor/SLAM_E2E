@@ -1,5 +1,4 @@
 import os
-import matplotlib.pyplot as plt
 
 # Ensure output directory exists
 OUTPUT_DIR = "project_outputs"

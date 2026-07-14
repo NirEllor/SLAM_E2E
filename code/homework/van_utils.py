@@ -1109,7 +1109,7 @@ def plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_di
     print(f"Max keyframe localization error: {np.max(errors):.3f} m")
 
 
-def build_data(num_frames=10):
+def build_data(num_frames):
     """
     Constructs the long-term TrackingDB object by matching features sequentially across frames.
     """
