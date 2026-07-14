@@ -2,14 +2,12 @@
 import van_utils as lib
 import matplotlib.pyplot as plt
 import numpy as np
-import cv2
 import random
-from ..tracking_database import TrackingDB
 
 # The total number of images to process across the sequence loop
 NUM_FRAMES = lib.get_num_frames()
 
-def q4_1(nun_frames =NUM_FRAMES):
+def q4_1(nun_frames=NUM_FRAMES):
     return lib.build_data(nun_frames)
 
 def q4_2(db):
@@ -153,7 +151,7 @@ def q4():
     print("========== Running Exercise 4 Execution Script ==========")
     
     # Trigger 4.1 sequence ingestion loop
-    db = q4_1(num_frames=NUM_FRAMES)
+    db = q4_1()
     
     # Trigger analytics pipeline tasks sequentially
     q4_2(db)
