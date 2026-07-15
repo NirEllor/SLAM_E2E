@@ -3,6 +3,10 @@ utils/pose_graph.py
 Pose graph construction, optimization, and covariance analysis utilities using GTSAM.
 """
 
+############################################################################
+# POSE GRAPH - Building and optimizing factor graph from keyframe constraints
+############################################################################
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt

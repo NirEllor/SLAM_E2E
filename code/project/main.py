@@ -147,6 +147,9 @@ def filter_matches_by_rectified_pattern(kp_left, kp_right, matches, threshold=2)
     return inliers
 
 
+############################################################################
+# TRIANGULATION - Reconstructing 3D points from stereo observations
+############################################################################
 def triangulate_and_compare_methods(idx=0):
     """Task 2.3: Triangulates 3D points using linear SVD and OpenCV; compares results."""
     print("\n--- Task 2.3: Triangulation Methods Comparison ---")
@@ -204,6 +207,9 @@ def match_temporal_features_left_images(frame0_data, frame1_data):
     return good_matches
 
 
+############################################################################
+# PNP - Perspective-n-Point pose estimation for camera localization
+############################################################################
 def estimate_motion_with_four_point_pnp(frame0_data, frame1_data, good_temporal_matches):
     """Task 3.3: Estimates camera motion using 4-point PnP with exact points."""
     print("\n--- Task 3.3: PnP Motion Estimation ---")
@@ -235,6 +241,9 @@ def find_four_view_reprojection_supporters(frame0_data, frame1_data, good_tempor
     return supporters, non_supporters
 
 
+############################################################################
+# RANSAC - Robust pose estimation using consensus-based outlier rejection
+############################################################################
 def estimate_motion_with_pnp_ransac(frame0_data, frame1_data, good_temporal_matches):
     """Task 3.5: Estimates pose via custom PnP-RANSAC with early/dynamic stopping."""
     print("\n--- Task 3.5: Custom PnP-RANSAC ---")
@@ -247,6 +256,9 @@ def estimate_motion_with_pnp_ransac(frame0_data, frame1_data, good_temporal_matc
     return R, t, inliers, outliers
 
 
+############################################################################
+# PNP TRAJECTORY - Temporal pose estimation and trajectory tracking
+############################################################################
 def track_trajectory_over_sequence(num_frames=20):
     """Task 3.6: Tracks camera trajectory over sequence using frame-by-frame RANSAC."""
     print("\n--- Task 3.6: Trajectory Estimation ---")
@@ -299,6 +311,10 @@ def run_temporal_tracking_and_pnp_pipeline(idx=0):
     track_trajectory_over_sequence(num_frames=get_num_frames())
 
 
+############################################################################
+# DATABASE DEFINITION - Core data structures for feature track storage
+# ADDING FRAMES TO DATABASE - Temporal tracking integration
+############################################################################
 def build_tracking_database(num_frames=None):
     """Task 4.1: Builds the long-term TrackingDB by matching features sequentially across frames."""
     print("\n--- Task 4.1: Building Tracking Database ---")
@@ -443,6 +459,9 @@ def analyze_single_track_error_gtsam(db):
     factor_error_graph(frame_indices, factor_errors, OUTPUT_DIR)
 
 
+############################################################################
+# BUNDLE ADJUSTMENT - Joint optimization of camera poses and 3D landmarks
+############################################################################
 def run_first_bundle_window(db):
     """Task 5.3: First bundle adjustment window optimization (10 frames)."""
     from utils.visualization import bundle1_3D, marginal_covariances, bundle1_2D_full, bundle1_2D_zoomed
@@ -534,6 +553,9 @@ def run_bundle_adjustment_pipeline(db):
     run_full_sliding_bundle_adjustment(db)
 
 
+############################################################################
+# RELATIVE TRANSFORMATION & COVARIANCE - Extracting pose uncertainty from bundle
+############################################################################
 def extract_relative_pose_constraints(db):
     """Task 6.1: Extract relative pose constraints between consecutive keyframes."""
     from utils.bundle_adjustment import choose_keyframes
@@ -565,6 +587,9 @@ def extract_relative_pose_constraints(db):
     return relative_poses, relative_covs
 
 
+############################################################################
+# POSE GRAPH - Building and optimizing factor graph from keyframe constraints
+############################################################################
 def optimize_pose_graph_from_constraints(db, relative_poses, relative_covs):
     """Task 6.2: Optimize pose graph from relative pose constraints."""
     from utils.visualization import plot_pose_graph_trajectory, plot_pose_graph_with_covariances, plot_pose_graph_2d_ellipses
@@ -627,6 +652,9 @@ def run_pose_graph_optimization_pipeline(db):
     return relative_poses, relative_covs
 
 
+############################################################################
+# LOOP CLOSURE DETECTION - Finding candidate loop-closure constraints
+############################################################################
 def detect_loop_candidates(db, relative_poses, relative_covs, keyframes, mahalanobis_threshold=1000.0):
     """Task 7.1: Detect loop closure candidates using Mahalanobis distance filtering."""
     from utils.bundle_adjustment import choose_keyframes
@@ -646,6 +674,9 @@ def detect_loop_candidates(db, relative_poses, relative_covs, keyframes, mahalan
     return candidates
 
 
+############################################################################
+# LOOP CLOSURE VERIFICATION - Consensus-based validation of loop-closure matches
+############################################################################
 def verify_loop_closures(db, loop_candidates, inlier_ratio_threshold=0.6):
     """Task 7.2: Verify loop closures using visual consensus (RANSAC fundamental matrix)."""
     print("\n" + "=" * 80)
@@ -663,6 +694,9 @@ def verify_loop_closures(db, loop_candidates, inlier_ratio_threshold=0.6):
     return verified_loops
 
 
+############################################################################
+# LOOP CLOSURE POSE ESTIMATION - Factor creation from verified loop pairs
+############################################################################
 def estimate_loop_closure_poses(db, verified_loops):
     """Task 7.3: Estimate relative poses for verified loop closures using bundle adjustment."""
     print("\n" + "=" * 80)
@@ -674,6 +708,9 @@ def estimate_loop_closure_poses(db, verified_loops):
     return loop_measurements
 
 
+############################################################################
+# LOOP CLOSURE INTEGRATION - Adding loop constraints and re-optimizing pose graph
+############################################################################
 def update_pose_graph_with_closures(cleaned_poses, cleaned_covs, loop_measurements):
     """Task 7.4: Update pose graph with loop closure constraints and re-optimize."""
     print("\n" + "=" * 80)

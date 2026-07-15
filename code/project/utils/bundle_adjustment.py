@@ -3,6 +3,10 @@ utils/bundle_adjustment.py
 GTSAM-based bundle adjustment, factor graph construction, and optimization utilities.
 """
 
+############################################################################
+# BUNDLE ADJUSTMENT - Joint optimization of camera poses and 3D landmarks
+############################################################################
+
 import os
 import random
 import numpy as np

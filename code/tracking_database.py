@@ -14,6 +14,10 @@ except ImportError:
     add_feature_to_db = lib.add_feature_to_db
 
 
+############################################################################
+# DATABASE DEFINITION - Core data structures for feature track storage
+############################################################################
+
 @dataclass
 class Observation:
     frame_id: int
@@ -73,6 +77,9 @@ class TrackingDB:
     # Encapsulated Track Ingestion
     # ==========================
 
+    ############################################################################
+    # ADDING FRAMES TO DATABASE - Temporal tracking integration
+    ############################################################################
     def update_tracks(self, idx, temporal_matches, prev_stereo, curr_stereo, prev_data, curr_data):
         """Ingests temporal feature matches into tracking database, linking features across frames."""
 

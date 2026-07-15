@@ -3,6 +3,10 @@ utils/loop_closure.py
 Loop closure detection, verification, and pose estimation utilities using GTSAM.
 """
 
+############################################################################
+# LOOP CLOSURE - Detection, verification, and pose graph factor creation
+############################################################################
+
 import numpy as np
 import cv2
 import gtsam

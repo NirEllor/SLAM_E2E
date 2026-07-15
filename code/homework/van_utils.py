@@ -200,6 +200,9 @@ def get_matched_points(kp1, kp2, matches):
     return np.array(points1), np.array(points2)
 
 
+############################################################################
+# TRIANGULATION - Reconstructing 3D points from stereo observations
+############################################################################
 def triangulate_point_linear(p1, p2, m1, m2):
     """
     Triangulates a single 3D point from 2D stereo observations using linear SVD.
@@ -362,6 +365,9 @@ def draw_temporal_supporters(img_left0, kp_left0, img_left1, kp_left1, supporter
     draw_match_canvas(img_left0, kp_left0, img_left1, kp_left1, supporters, non_supporters, title + " | green=supporters, red=outliers")
 
 
+############################################################################
+# RANSAC - Robust pose estimation using consensus-based outlier rejection
+############################################################################
 def draw_ransac_results(frame0_data, frame1_data, inliers, outliers):
     """
     Visualizes PnP-RANSAC temporally tracked inliers and outliers between consecutive frames.
@@ -373,6 +379,9 @@ def draw_ransac_results(frame0_data, frame1_data, inliers, outliers):
     )
 
 
+############################################################################
+# PNP - Perspective-n-Point pose estimation for camera localization
+############################################################################
 def build_pnp_correspondences(frame0_data, frame1_data, good_temporal_matches):
     """
     Constructs 3D-2D quad-image observations across consecutive stereo frames.
@@ -727,6 +736,9 @@ def plot_track_length_histogram(db, min_length=2):
     plt.tight_layout()
 
 
+############################################################################
+# PNP + RANSAC - Trajectory calculation via robust pose estimation
+############################################################################
 def estimate_relative_pose_ransac(correspondences, prev_data, curr_data):
     """Estimates relative pose using PnP-RANSAC with early stopping on converged inliers."""
     k_matrix, _, _ = read_cameras()
@@ -1158,6 +1170,9 @@ def _add_landmarks_to_graph(db, graph, initial_estimate, window_frames, final_tr
     return optimized_landmark_ids
 
 
+############################################################################
+# BUNDLE ADJUSTMENT - Joint optimization of camera poses and 3D landmarks
+############################################################################
 def build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_window=150, prior_sigma=1e-6):
     """
     Core bundle adjustment builder and solver function shared by standard and prior sensitivity tests.
@@ -1441,6 +1456,9 @@ def find_component_start_keyframes(relative_poses):
     return component_starts
 
 
+############################################################################
+# POSE GRAPH - Building factor graph from keyframe constraints
+############################################################################
 def build_pose_graph(relative_poses, relative_covs):
     """
     Constructs GTSAM NonlinearFactorGraph composed of BetweenFactorPose3 constraints.
@@ -1589,6 +1607,9 @@ def run_and_plot_prior_sensitivity(db, c0_idx, ck_idx, output_dir):
         print(f" saved → {path}")
 
 
+############################################################################
+# RELATIVE TRANSFORMATION & COVARIANCE - Extracting pose uncertainty from bundle
+############################################################################
 def compute_relative_pose_and_covariance(db, start_idx, end_idx):
     """
     Calculates marginal covariance and relative pose between keyframes using Schur Complements.
@@ -1756,6 +1777,9 @@ def _get_edge_pose_and_cov(u, v, relative_poses, relative_covs):
     raise KeyError(f"No pose-graph edge between keyframes {u} and {v}")
 
 
+############################################################################
+# LOOP CLOSURE DETECTION - Finding candidate loop-closure constraints
+############################################################################
 def detect_loop_closure_candidates(relative_poses, relative_covs, keyframes, mahalanobis_threshold):
     """
     Identifies candidate loop closures below a Mahalanobis distance threshold using Dijkstra shortest paths.
@@ -1841,6 +1865,9 @@ def plot_loop_candidates(keyframes, candidates, optimized_values, output_dir="."
     plt.close()
 
 
+############################################################################
+# LOOP CLOSURE VERIFICATION - Consensus-based validation of loop-closure matches
+############################################################################
 def verify_loop_closures_consensus(db, loop_candidates, inlier_ratio_threshold, output_dir=None):
     """
     Verifies candidate loops by performing AKAZE matching and Fundamental matrix RANSAC filtering.
