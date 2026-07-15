@@ -1,8 +1,12 @@
 import os
 import van_utils as lib
 
+output_dir = "./outputs"
+os.makedirs(output_dir, exist_ok=True)
 
-def q6_1(db, output_dir="."):
+
+def q6_1(db, output_dir="./outputs"):
+    """6.1: Extracts relative pose constraints from bundle adjustment keyframe windows."""
     print("\n" + "=" * 80)
     print("SECTION 6.1: RELATIVE POSE CONSTRAINTS FROM BUNDLE ADJUSTMENT")
     print("=" * 80)
@@ -32,7 +36,8 @@ def q6_1(db, output_dir="."):
     return relative_poses, relative_covs
 
 
-def q6_2(db, relative_poses, relative_covs, output_dir="."):
+def q6_2(db, relative_poses, relative_covs, output_dir="./outputs"):
+    """6.2: Optimizes pose graph using relative pose constraints and covariances."""
     print("\n" + "=" * 80)
     print("SECTION 6.2: POSE GRAPH OPTIMIZATION")
     print("=" * 80)
@@ -50,7 +55,7 @@ def q6_2(db, relative_poses, relative_covs, output_dir="."):
     lib.plot_pose_graph_trajectory(
         initial,
         title="6.2: Initial Pose Graph Trajectory (Fixed Gaps)",
-        output_path=os.path.join(output_dir, "../outputs/task_6_2_initial_pose_graph.png")
+        output_path=os.path.join(output_dir, "task_6_2_initial_pose_graph.png")
     )
 
     # 4. Optimize
@@ -61,13 +66,13 @@ def q6_2(db, relative_poses, relative_covs, output_dir="."):
     lib.plot_pose_graph_trajectory(
         result,
         title="6.2: Optimized Pose Graph Trajectory",
-        output_path=os.path.join(output_dir, "../outputs/task_6_2_optimized_pose_graph.png")
+        output_path=os.path.join(output_dir, "task_6_2_optimized_pose_graph.png")
     )
     lib.plot_pose_graph_with_covariances(
         result,
         marginals,
         title="6.2: Optimized Pose Graph With Final Marginal Covariances",
-        output_path=os.path.join(output_dir, "../outputs/task_6_2_pose_graph_covariances.png"),
+        output_path=os.path.join(output_dir, "task_6_2_pose_graph_covariances.png"),
         covariance_step=5,
     )
     lib.plot_pose_graph_2d_ellipses(
@@ -82,4 +87,4 @@ def q6_2(db, relative_poses, relative_covs, output_dir="."):
 if __name__ == "__main__":
     db = lib.load_or_build_db(force_rebuild=False, num_frames=lib.get_num_frames())
     relative_poses, relative_covs = q6_1(db)
-    q6_2(db, relative_poses, relative_covs, output_dir=".")
+    q6_2(db, relative_poses, relative_covs)

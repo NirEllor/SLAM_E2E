@@ -334,6 +334,7 @@ def draw_match_canvas(img0_gray, kp0, img1_gray, kp1, matches_green, matches_red
     canvas = np.hstack([img0, img1])
 
     def draw_line(match, color):
+        """Draws keypoint circles and connecting line on canvas for a feature match."""
         q_idx = match.queryIdx if hasattr(match, 'queryIdx') else match['temporal_match'].queryIdx
         t_idx = match.trainIdx if hasattr(match, 'trainIdx') else match['temporal_match'].trainIdx
         pt0 = tuple(map(int, kp0[q_idx].pt))
@@ -726,6 +727,40 @@ def plot_track_length_histogram(db, min_length=2):
     plt.tight_layout()
 
 
+def estimate_relative_pose_ransac(correspondences, prev_data, curr_data):
+    """Estimates relative pose using PnP-RANSAC with early stopping on converged inliers."""
+    k_matrix, _, _ = read_cameras()
+    best_inliers, best_outliers, best_R, best_t = [], [], None, None
+    no_improvement, max_no_improvement = 0, 12
+
+    for _ in range(50):
+        sample = random.sample(correspondences, 4)
+        obj_pts = np.array([c["X"] for c in sample], dtype=np.float32)
+        img_pts = np.array([c["obs_left1"] for c in sample], dtype=np.float32)
+
+        success, rvec, tvec = cv2.solvePnP(obj_pts, img_pts, k_matrix, None, flags=cv2.SOLVEPNP_EPNP)
+        if not success:
+            no_improvement += 1
+            continue
+
+        R_candidate, _ = cv2.Rodrigues(rvec)
+        inliers, outliers = evaluate_supporters(correspondences, prev_data, curr_data, R_candidate, tvec, threshold=2)
+
+        if len(inliers) > len(best_inliers):
+            best_inliers, best_outliers, best_R, best_t = inliers, outliers, R_candidate, tvec
+            no_improvement = 0
+        else:
+            no_improvement += 1
+
+        if no_improvement >= max_no_improvement:
+            break
+
+    if best_R is None:
+        raise RuntimeError("RANSAC failed to find a valid pose.")
+
+    return best_inliers, best_outliers, best_R, best_t
+
+
 def build_data(num_frames):
     """
     Constructs the long-term TrackingDB object by matching features sequentially across frames.
@@ -751,34 +786,7 @@ def build_data(num_frames):
             if len(correspondences) < 4:
                 raise RuntimeError("Not enough correspondences for PnP-RANSAC.")
 
-            best_inliers, best_outliers, best_R, best_t = [], [], None, None
-            k_matrix, _, _ = read_cameras()
-            no_improvement, max_no_improvement = 0, 12
-
-            for _ in range(50):
-                sample = random.sample(correspondences, 4)
-                obj_pts = np.array([c["X"] for c in sample], dtype=np.float32)
-                img_pts = np.array([c["obs_left1"] for c in sample], dtype=np.float32)
-
-                success, rvec, tvec = cv2.solvePnP(obj_pts, img_pts, k_matrix, None, flags=cv2.SOLVEPNP_EPNP)
-                if not success:
-                    no_improvement += 1
-                    continue
-
-                R_candidate, _ = cv2.Rodrigues(rvec)
-                inliers, outliers = evaluate_supporters(correspondences, prev_data, curr_data, R_candidate, tvec, threshold=2)
-
-                if len(inliers) > len(best_inliers):
-                    best_inliers, best_outliers, best_R, best_t = inliers, outliers, R_candidate, tvec
-                    no_improvement = 0
-                else:
-                    no_improvement += 1
-
-                if no_improvement >= max_no_improvement:
-                    break
-
-            if best_R is None:
-                raise RuntimeError("RANSAC failed to find a valid pose.")
+            best_inliers, best_outliers, best_R, best_t = estimate_relative_pose_ransac(correspondences, prev_data, curr_data)
 
             total = len(best_inliers) + len(best_outliers)
             inlier_percentages.append(100.0 * len(best_inliers) / total if total > 0 else 0.0)
@@ -1080,92 +1088,92 @@ def pose_translation_np(pose):
     return np.array(pose.translation()).reshape(3)
 
 
+def _initialize_bundle_poses(db, graph, initial_estimate, window_frames, start_frame, prior_sigma):
+    """Initializes camera poses and adds anchor prior to factor graph."""
+    pose_start_global = get_c2w_pose(*db.camera_poses[start_frame])
+    anchor_factor = None
+    for f_id in window_frames:
+        pose_key = symbol("c", f_id)
+        pose_f_global = get_c2w_pose(*db.camera_poses[f_id])
+        initial_estimate.insert(pose_key, pose_start_global.between(pose_f_global))
+        if f_id == start_frame:
+            anchor_factor = gtsam.PriorFactorPose3(
+                pose_key, gtsam.Pose3(), gtsam.noiseModel.Diagonal.Sigmas(np.ones(6) * prior_sigma)
+            )
+            graph.add(anchor_factor)
+    return anchor_factor
+
+
+def _select_bundle_tracks(db, window_frames, max_tracks_per_window):
+    """Selects subset of tracks for bundle optimization via stratified sampling."""
+    rng = random.Random(0)
+    candidate_tracks = set()
+    for f_id in window_frames:
+        candidate_tracks.update(db.tracks(f_id))
+    guaranteed_tracks = set()
+    for f_id in window_frames:
+        ts = list(db.tracks(f_id))
+        if ts:
+            guaranteed_tracks.update(rng.sample(ts, min(15, len(ts))))
+    for a, b in zip(window_frames[:-1], window_frames[1:]):
+        shared_tracks = list(set(db.tracks(a)) & set(db.tracks(b)))
+        if shared_tracks:
+            guaranteed_tracks.update(rng.sample(shared_tracks, min(15, len(shared_tracks))))
+    remaining = max_tracks_per_window - len(guaranteed_tracks)
+    extras = list(candidate_tracks - guaranteed_tracks)
+    return list(guaranteed_tracks) + (rng.sample(extras, min(remaining, len(extras))) if remaining > 0 else [])
+
+
+def _add_landmarks_to_graph(db, graph, initial_estimate, window_frames, final_tracks_to_optimize, P_left0, P_right0, K_gtsam, measurement_noise):
+    """Adds landmark points and stereo factors for selected tracks to graph."""
+    optimized_landmark_ids = []
+    for track_id in final_tracks_to_optimize:
+        track_frames = [f for f in db.frames(track_id) if f in window_frames]
+        if len(track_frames) < 2:
+            continue
+        obs_init = db.observation(track_frames[0], track_id)
+        if not valid_stereo_obs(obs_init, min_disp=1.0):
+            continue
+        X_cam = triangulate_point_linear(
+            np.array([obs_init.x_left, obs_init.y]),
+            np.array([obs_init.x_right, obs_init.y]),
+            P_left0, P_right0
+        )
+        if not np.all(np.isfinite(X_cam)) or X_cam[2] <= 2.0 or X_cam[2] > 120.0:
+            continue
+        init_pose = initial_estimate.atPose3(symbol("c", track_frames[0]))
+        X_local = init_pose.transformFrom(gtsam.Point3(float(X_cam[0]), float(X_cam[1]), float(X_cam[2])))
+        point_key = symbol("q", track_id)
+        temp_factors = []
+        for f_id in track_frames:
+            obs = db.observation(f_id, track_id)
+            if valid_stereo_obs(obs, min_disp=1.0):
+                temp_factors.append(create_stereo_factor(obs, measurement_noise, symbol("c", f_id), point_key, K_gtsam))
+        if len(temp_factors) < 2:
+            continue
+        initial_estimate.insert(point_key, X_local)
+        optimized_landmark_ids.append(track_id)
+        for factor in temp_factors:
+            graph.add(factor)
+    return optimized_landmark_ids
+
+
 def build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_window=150, prior_sigma=1e-6):
     """
     Core bundle adjustment builder and solver function shared by standard and prior sensitivity tests.
     """
     K_gtsam = init_gtsam_stereo_calibration()
     _, P_left0, P_right0 = read_cameras()
-
     graph = gtsam.NonlinearFactorGraph()
     initial_estimate = gtsam.Values()
-
     measurement_noise = gtsam.noiseModel.Robust.Create(
         gtsam.noiseModel.mEstimator.Huber.Create(2.0),
         gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
     )
-
     window_frames = list(range(start_frame, end_frame + 1))
-    pose_start_global = get_c2w_pose(*db.camera_poses[start_frame])
-
-    for f_id in window_frames:
-        pose_key = symbol("c", f_id)
-        pose_f_global = get_c2w_pose(*db.camera_poses[f_id])
-        initial_estimate.insert(pose_key, pose_start_global.between(pose_f_global))
-
-        if f_id == start_frame:
-            anchor_factor = gtsam.PriorFactorPose3(
-                pose_key, gtsam.Pose3(), gtsam.noiseModel.Diagonal.Sigmas(np.ones(6) * prior_sigma)
-            )
-            graph.add(anchor_factor)
-
-    rng = random.Random(0)
-    candidate_tracks = set()
-    for f_id in window_frames:
-        candidate_tracks.update(db.tracks(f_id))
-
-    guaranteed_tracks = set()
-    for f_id in window_frames:
-        ts = list(db.tracks(f_id))
-        if ts:
-            guaranteed_tracks.update(rng.sample(ts, min(15, len(ts))))
-
-    for a, b in zip(window_frames[:-1], window_frames[1:]):
-        shared_tracks = list(set(db.tracks(a)) & set(db.tracks(b)))
-        if shared_tracks:
-            guaranteed_tracks.update(rng.sample(shared_tracks, min(15, len(shared_tracks))))
-
-    remaining = max_tracks_per_window - len(guaranteed_tracks)
-    extras = list(candidate_tracks - guaranteed_tracks)
-    final_tracks_to_optimize = list(guaranteed_tracks) + (rng.sample(extras, min(remaining, len(extras))) if remaining > 0 else [])
-
-    optimized_landmark_ids = []
-    for track_id in final_tracks_to_optimize:
-        track_frames = [f for f in db.frames(track_id) if f in window_frames]
-        if len(track_frames) < 2:
-            continue
-
-        obs_init = db.observation(track_frames[0], track_id)
-        if not valid_stereo_obs(obs_init, min_disp=1.0):
-            continue
-
-        X_cam = triangulate_point_linear(
-            np.array([obs_init.x_left, obs_init.y]),
-            np.array([obs_init.x_right, obs_init.y]),
-            P_left0, P_right0
-        )
-
-        if not np.all(np.isfinite(X_cam)) or X_cam[2] <= 2.0 or X_cam[2] > 120.0:
-            continue
-
-        init_pose = initial_estimate.atPose3(symbol("c", track_frames[0]))
-        X_local = init_pose.transformFrom(gtsam.Point3(float(X_cam[0]), float(X_cam[1]), float(X_cam[2])))
-        point_key = symbol("q", track_id)
-
-        temp_factors = []
-        for f_id in track_frames:
-            obs = db.observation(f_id, track_id)
-            if valid_stereo_obs(obs, min_disp=1.0):
-                temp_factors.append(create_stereo_factor(obs, measurement_noise, symbol("c", f_id), point_key, K_gtsam))
-
-        if len(temp_factors) < 2:
-            continue
-
-        initial_estimate.insert(point_key, X_local)
-        optimized_landmark_ids.append(track_id)
-        for factor in temp_factors:
-            graph.add(factor)
-
+    anchor_factor = _initialize_bundle_poses(db, graph, initial_estimate, window_frames, start_frame, prior_sigma)
+    final_tracks_to_optimize = _select_bundle_tracks(db, window_frames, max_tracks_per_window)
+    optimized_landmark_ids = _add_landmarks_to_graph(db, graph, initial_estimate, window_frames, final_tracks_to_optimize, P_left0, P_right0, K_gtsam, measurement_noise)
     initial_error = graph.error(initial_estimate)
     result = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate).optimize()
     final_error = graph.error(result)
@@ -1828,7 +1836,7 @@ def plot_loop_candidates(keyframes, candidates, optimized_values, output_dir="."
     plt.legend(loc="upper left")
     plt.tight_layout()
 
-    output_path = os.path.join(output_dir, "../../outputs/task_7_1_loop_candidates_trajectory.png")
+    output_path = os.path.join(output_dir, "task_7_1_loop_candidates_trajectory.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
 
@@ -1881,16 +1889,8 @@ def verify_loop_closures_consensus(db, loop_candidates, inlier_ratio_threshold, 
     return verified_loops, total_verified_loops
 
 
-def estimate_loop_relative_pose_bundle(db, c_i, c_n, inlier_matches=None, max_landmarks=120, min_landmarks=8, output_dir="."):
-    """
-    Estimates relative pose and covariance across confirmed loop closure frames using 2-frame BA.
-    """
-    K_gtsam = init_gtsam_stereo_calibration()
-    K_mat, _, _ = read_cameras()
-
-    data_i = run_single_pair(c_i, display=False, plot_3d=False)
-    data_n = run_single_pair(c_n, display=False, plot_3d=False)
-
+def _gather_loop_correspondences(data_i, data_n, inlier_matches, min_landmarks=8, max_landmarks=120):
+    """Extracts and filters stereo-valid correspondences between loop closure frames."""
     if inlier_matches is None:
         bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
         knn = bf_matcher.knnMatch(data_i["des_left"], data_n["des_left"], k=2)
@@ -1899,63 +1899,72 @@ def estimate_loop_relative_pose_bundle(db, c_i, c_n, inlier_matches=None, max_la
         pts_n = np.array([data_n["kp_left"][m.trainIdx].pt for m in good], dtype=np.float32)
         _, mask = cv2.findFundamentalMat(pts_i, pts_n, cv2.FM_RANSAC, 3.0, 0.99)
         inlier_matches = [good[k] for k in range(len(good)) if mask[k][0] == 1]
-
     i_q_to_pt = {m.queryIdx: idx for idx, m in enumerate(data_i["stereo_inliers"])}
     i_q_to_stereo = {m.queryIdx: m for m in data_i["stereo_inliers"]}
     n_q_to_stereo = {m.queryIdx: m for m in data_n["stereo_inliers"]}
-
     usable = []
     for m in inlier_matches:
         if m.queryIdx in i_q_to_pt and m.queryIdx in i_q_to_stereo and m.trainIdx in n_q_to_stereo:
             X_i = np.array(data_i["points_3d"][i_q_to_pt[m.queryIdx]], dtype=np.float64).reshape(3)
             if np.all(np.isfinite(X_i)) and 2.0 < X_i[2] < 120.0:
                 usable.append((m, X_i))
-
     if len(usable) < min_landmarks:
-        raise RuntimeError(f"Loop {c_i}->{c_n}: only {len(usable)} usable stereo landmarks")
+        raise RuntimeError(f"Insufficient stereo landmarks: {len(usable)} < {min_landmarks}")
+    return sorted(usable, key=lambda item: item[0].distance)[:max_landmarks]
 
-    usable = sorted(usable, key=lambda item: item[0].distance)[:max_landmarks]
 
-    obj_pts = np.array([X for _, X in usable], dtype=np.float32)
-    img_pts = np.array([data_n["kp_left"][m.trainIdx].pt for m, _ in usable], dtype=np.float32)
+def _estimate_loop_initial_pose_pnp(K_mat, usable_correspondences, data_n, min_landmarks=8):
+    """Estimates initial pose via PnP-RANSAC between loop frames."""
+    obj_pts = np.array([X for _, X in usable_correspondences], dtype=np.float32)
+    img_pts = np.array([data_n["kp_left"][m.trainIdx].pt for m, _ in usable_correspondences], dtype=np.float32)
     success, rvec, tvec, pnp_inliers = cv2.solvePnPRansac(obj_pts, img_pts, K_mat, None, iterationsCount=200, reprojectionError=3.0, confidence=0.99)
-
     if not success or pnp_inliers is None or len(pnp_inliers) < min_landmarks:
-        raise RuntimeError(f"Loop {c_i}->{c_n}: PnP failed")
-
+        raise RuntimeError("PnP-RANSAC failed for loop closure")
     R_ni, _ = cv2.Rodrigues(rvec)
     t_ni = tvec.reshape(3)
+    return R_ni, t_ni, pnp_inliers
 
+
+def _build_loop_closure_graph(c_i, c_n, usable_correspondences, pnp_inliers, data_i, data_n, K_gtsam, R_ni, t_ni):
+    """Constructs GTSAM factor graph for loop closure bundle optimization."""
     graph = gtsam.NonlinearFactorGraph()
     initial = gtsam.Values()
     key_i, key_n = symbol("c", int(c_i)), symbol("c", int(c_n))
-
     initial.insert(key_i, gtsam.Pose3())
     initial.insert(key_n, gtsam.Pose3(gtsam.Rot3(R_ni.T), gtsam.Point3(*(-R_ni.T @ t_ni).reshape(3))))
     graph.add(gtsam.PriorFactorPose3(key_i, gtsam.Pose3(), gtsam.noiseModel.Diagonal.Sigmas(np.ones(6) * 1e-6)))
-
     meas_noise = gtsam.noiseModel.Robust.Create(gtsam.noiseModel.mEstimator.Huber.Create(2.0), gtsam.noiseModel.Isotropic.Sigma(3, 1.0))
+    i_q_to_stereo = {m.queryIdx: m for m in data_i["stereo_inliers"]}
+    n_q_to_stereo = {m.queryIdx: m for m in data_n["stereo_inliers"]}
     kept_indices = set(int(x[0]) for x in pnp_inliers.reshape(-1, 1))
-
-    for local_idx, (m, X_i) in enumerate(usable):
+    for local_idx, (m, X_i) in enumerate(usable_correspondences):
         if local_idx not in kept_indices:
             continue
         point_key = symbol("q", int(10_000_000 + c_i * 10_000 + c_n * 10 + local_idx))
         initial.insert(point_key, gtsam.Point3(float(X_i[0]), float(X_i[1]), float(X_i[2])))
-
         kp_li, kp_ri = data_i["kp_left"][m.queryIdx], data_i["kp_right"][i_q_to_stereo[m.queryIdx].trainIdx]
         kp_ln, kp_rn = data_n["kp_left"][m.trainIdx], data_n["kp_right"][n_q_to_stereo[m.trainIdx].trainIdx]
-
         graph.add(gtsam.GenericStereoFactor3D(gtsam.StereoPoint2(kp_li.pt[0], kp_ri.pt[0], kp_li.pt[1]), meas_noise, key_i, point_key, K_gtsam))
         graph.add(gtsam.GenericStereoFactor3D(gtsam.StereoPoint2(kp_ln.pt[0], kp_rn.pt[0], kp_ln.pt[1]), meas_noise, key_n, point_key, K_gtsam))
+    return graph, initial, key_i, key_n
 
+
+def estimate_loop_relative_pose_bundle(db, c_i, c_n, inlier_matches=None, max_landmarks=120, min_landmarks=8, output_dir="."):
+    """
+    Estimates relative pose and covariance across confirmed loop closure frames using 2-frame BA.
+    """
+    K_gtsam = init_gtsam_stereo_calibration()
+    K_mat, _, _ = read_cameras()
+    data_i = run_single_pair(c_i, display=False, plot_3d=False)
+    data_n = run_single_pair(c_n, display=False, plot_3d=False)
+    usable = _gather_loop_correspondences(data_i, data_n, inlier_matches, min_landmarks, max_landmarks)
+    R_ni, t_ni, pnp_inliers = _estimate_loop_initial_pose_pnp(K_mat, usable, data_n, min_landmarks)
+    graph, initial, key_i, key_n = _build_loop_closure_graph(c_i, c_n, usable, pnp_inliers, data_i, data_n, K_gtsam, R_ni, t_ni)
     result = gtsam.LevenbergMarquardtOptimizer(graph, initial).optimize()
     marginals = gtsam.Marginals(graph, result)
-
     keys = gtsam.KeyVector()
     keys.append(key_i)
     keys.append(key_n)
-
     rel_cov = np.linalg.inv(marginals.jointMarginalInformation(keys).fullMatrix()[-6:, -6:])
 
     return {
@@ -2069,6 +2078,7 @@ def plot_location_uncertainty_size(no_loop_values, no_loop_marginals, loop_value
     Plots marginal position uncertainty area over keyframes before and after loop closures.
     """
     def _uncertainty_trace(values, marginals):
+        """Computes pose uncertainty trace (covariance determinant magnitude) for all keyframes."""
         ids, _ = extract_pose_graph_positions(values)
         sizes, good_ids = [], []
         for f in ids:

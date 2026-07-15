@@ -29,6 +29,7 @@ def q1_2(des1):
 
 
 def q1_3(img1, img2, kp1, kp2, des1, des2):
+    """1.3: Computes raw brute-force feature matches between stereo images."""
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     matches = bf.match(des1, des2)
 
@@ -75,6 +76,7 @@ def q1_4(img1, img2, kp1, kp2, des1, des2):
                                                            ")")
 
 def q1():
+    """Exercise 1: Orchestrates feature detection and matching pipeline."""
     print("========== Running Exercise 1 Pipeline ==========")
     
     # 1.1: Detect and show keypoints
@@ -92,6 +94,7 @@ def q1():
     plt.show()
 
 def main():
+    """Entry point for Exercise 1."""
     q1()
 
 if __name__ == '__main__':

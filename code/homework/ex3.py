@@ -240,9 +240,7 @@ def q3_5(frame0_data,
          early_stop_ratio=0.78,
          max_no_improvement=12,
          pnp_method=cv2.SOLVEPNP_EPNP):
-    """
-    3.5: Custom PnP-RANSAC with dynamic stopping.
-    """
+    """3.5: Estimates motion using PnP-RANSAC with inlier rejection."""
 
     print("\n--- Task 3.5: Custom PnP-RANSAC ---")
 
@@ -380,6 +378,7 @@ def q3_5(frame0_data,
     return best_R, best_t, final_inliers, final_outliers
 
 def q3_6(num_frames=20):
+    """3.6: Tracks trajectory over frame sequence using temporal pose estimation."""
     print("\n==================== Task 3.6 ====================")
 
     start_time = time.time()
@@ -476,7 +475,7 @@ def q3_6(num_frames=20):
     return estimated_positions, gt_positions
 
 def q3(idx=0):
-
+    """Exercise 3: Orchestrates temporal tracking and PnP-RANSAC pipeline."""
     print(f"\n==================== Starting Ex 3 Pipeline (Frame {idx} -> {idx+1}) ====================")
 
     # 3.1
@@ -551,42 +550,8 @@ def q3(idx=0):
         'trajectory_gt': gt_positions
     }
 
-def benchmark_tracking_configs(idx=0):
-    #TODO Move this function to utils or delete it
-    """
-    High-level utility function to evaluate alternative tracking configuration parameters,
-    detector types, and variant PnP calculation methods. Moved to van_utils library layer.
-    """
-    configs = [
-        ("ORB", 700, cv2.SOLVEPNP_EPNP),
-        ("ORB", 1000, cv2.SOLVEPNP_EPNP),
-        ("ORB", 1500, cv2.SOLVEPNP_EPNP),
-        ("AKAZE", 0, cv2.SOLVEPNP_EPNP),
-        ("ORB", 1000, cv2.SOLVEPNP_P3P),
-        ("ORB", 1000, cv2.SOLVEPNP_AP3P),
-    ]
-
-    for detector_type, n_features, pnp_method in configs:
-        print("\n" + "="*40)
-        print(f"Config Setup -> Detector: {detector_type} | Limit: {n_features} | Method ID: {pnp_method}")
-
-        frame0_data = lib.run_single_pair(idx=idx, display=False, plot_3d=False)
-        frame1_data = lib.run_single_pair(idx=idx + 1, display=False, plot_3d=False)
-
-        matches = q3_2(frame0_data, frame1_data, draw=False)
-
-        try:
-            R, t, inliers, outliers = q3_5(
-                frame0_data, frame1_data, matches,
-                iterations=50, threshold=2
-            )
-            print(f"Resulting Temporal Intersections: {len(matches)}")
-            print(f"Verified Consensus Inliers: {len(inliers)}")
-            if matches:
-                print(f"Inlier Verification Success Ratio: {len(inliers) / len(matches):.3f}")
-        except RuntimeError as e:
-            print(f"Calculation pass aborted: {e}")
 def main():
+    """Entry point for Exercise 3."""
     q3()
 
 if __name__ == '__main__':

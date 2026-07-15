@@ -53,7 +53,7 @@ def plot_deviation_histogram(deviations):
     """Plots a histogram of y-deviation values for stereo matches."""
     plt.figure(figsize=(10, 6))
     plt.hist(deviations, bins=50)
-    plt.xlabel("Deviation from rectified stereo pattern")
+    plt.xlabel("Deviation from rectified stereo pattern (pixels)")
     plt.ylabel("Number of matches")
     plt.title("Histogram of deviations from rectified stereo pattern")
     plt.tight_layout()
@@ -94,9 +94,10 @@ def plot_3d_points(points_3d, title="3D Point Cloud"):
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(points_3d[:, 0], points_3d[:, 1], points_3d[:, 2], s=2)
     ax.set_title(title)
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
+    ax.set_xlabel("X [m]")
+    ax.set_ylabel("Y [m]")
+    ax.set_zlabel("Z [m]")
+    ax.set_box_aspect([1, 1, 1])
     plt.tight_layout()
 
 
@@ -184,8 +185,8 @@ def plot_transformed_clouds(frame0_data, frame1_data, R, t):
     plt.scatter(cloud0_transformed[mask0, 0], cloud0_transformed[mask0, 2], s=2, c='red', label='Pair0 after T')
     plt.scatter(cloud1[mask1, 0], cloud1[mask1, 2], s=2, c='blue', label='Pair1')
 
-    plt.xlabel("X")
-    plt.ylabel("Z")
+    plt.xlabel("X [m]")
+    plt.ylabel("Z [m]")
     plt.title("3.5: Point Clouds Alignment")
     plt.legend()
     plt.axis('equal')
@@ -198,8 +199,8 @@ def plot_trajectory(est_positions, gt_positions):
     plt.figure(figsize=(10, 8))
     plt.plot(est_positions[:, 0], est_positions[:, 2], label='Estimated trajectory', linewidth=2)
     plt.plot(gt_positions[:, 0], gt_positions[:, 2], label='Ground truth', linewidth=2)
-    plt.xlabel("X")
-    plt.ylabel("Z")
+    plt.xlabel("X [m]")
+    plt.ylabel("Z [m]")
     plt.title("3.6: Camera Trajectory (Top View)")
     plt.legend()
     plt.axis('equal')
@@ -272,6 +273,22 @@ def plot_track_length_histogram(db, min_length=2):
     plt.xlabel("Track Length")
     plt.ylabel("Track Count")
     plt.grid(True, axis="y")
+    plt.tight_layout()
+
+
+def plot_track_reprojection_error_analysis(frames, left_errors, right_errors):
+    """Plots left and right reprojection errors across track frames."""
+    distances_from_reference = list(range(len(frames)))
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(distances_from_reference, left_errors, label='Left Channel Residuals', color='#2F4F4F', linewidth=2)
+    plt.plot(distances_from_reference, right_errors, label='Right Channel Residuals', color='#FFA500', linewidth=2)
+
+    plt.title("4.7: PnP - projection error vs track length")
+    plt.xlabel("distance from reference (frames)")
+    plt.ylabel("projection error (pixels)")
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.legend()
     plt.tight_layout()
 
 
@@ -639,7 +656,7 @@ def plot_loop_candidates(keyframes, candidates, optimized_values, output_dir="."
     plt.legend(loc="upper left")
     plt.tight_layout()
 
-    output_path = os.path.join(output_dir, "../outputs/task_7_1_loop_candidates_trajectory.png")
+    output_path = os.path.join(output_dir, "task_7_1_loop_candidates_trajectory.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
 

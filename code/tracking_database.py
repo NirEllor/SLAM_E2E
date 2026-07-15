@@ -2,7 +2,16 @@
 
 import pickle
 from dataclasses import dataclass
-import homework.van_utils as lib
+
+# Support both homework/ (van_utils) and project/ (utils.tracking) imports
+try:
+    # Try project/ first (namespace package import)
+    from utils.tracking import get_feature_observation, add_feature_to_db
+except ImportError:
+    # Fall back to homework/ van_utils
+    import homework.van_utils as lib
+    get_feature_observation = lib.get_feature_observation
+    add_feature_to_db = lib.add_feature_to_db
 
 
 @dataclass
@@ -15,8 +24,10 @@ class Observation:
 
 
 class TrackingDB:
+    """Stores feature tracks across multiple frames with frame-track associations and observations."""
 
     def __init__(self):
+        """Initialize empty tracking database with no tracks or frames."""
         self.next_track_id = 0
         
         # track_id -> list(frame_ids)
@@ -39,18 +50,23 @@ class TrackingDB:
     # ==========================
 
     def tracks(self, frame_id):
+        """Returns list of track IDs visible in a given frame."""
         return self.frame_to_tracks.get(frame_id, [])
 
     def frames(self, track_id):
+        """Returns list of frame IDs where a track appears."""
         return self.track_to_frames.get(track_id, [])
 
     def observation(self, frame_id, track_id):
+        """Returns Observation for a feature in a given frame and track."""
         return self.observations.get((frame_id, track_id))
 
     def track_num(self):
+        """Returns total number of tracks in database."""
         return len(self.track_to_frames)
 
     def frame_num(self):
+        """Returns total number of frames in database."""
         return len(self.frame_to_tracks)
 
     # ==========================
@@ -58,13 +74,14 @@ class TrackingDB:
     # ==========================
 
     def update_tracks(self, idx, temporal_matches, prev_stereo, curr_stereo, prev_data, curr_data):
+        """Ingests temporal feature matches into tracking database, linking features across frames."""
 
         for match in temporal_matches:
             prev_feature = match.queryIdx
             curr_feature = match.trainIdx
 
-            prev_obs = lib.get_feature_observation(prev_data, prev_feature, prev_stereo)
-            curr_obs = lib.get_feature_observation(curr_data, curr_feature, curr_stereo)
+            prev_obs = get_feature_observation(prev_data, prev_feature, prev_stereo)
+            curr_obs = get_feature_observation(curr_data, curr_feature, curr_stereo)
 
             if prev_obs is None or curr_obs is None:
                 continue
@@ -73,10 +90,10 @@ class TrackingDB:
                 track_id = self.get_track_of_feature(idx - 1, prev_feature)
             else:
                 track_id = self.create_track()
-                lib.add_feature_to_db(self, idx - 1, prev_feature, track_id, prev_obs)
+                add_feature_to_db(self, idx - 1, prev_feature, track_id, prev_obs)
 
 
-            lib.add_feature_to_db(self, idx, curr_feature, track_id, curr_obs)
+            add_feature_to_db(self, idx, curr_feature, track_id, curr_obs)
 
 
     # ==========================
@@ -84,12 +101,14 @@ class TrackingDB:
     # ==========================
 
     def create_track(self):
+        """Creates a new track and returns its ID."""
         track_id = self.next_track_id
         self.next_track_id += 1
         self.track_to_frames[track_id] = []
         return track_id
 
     def add_observation(self, frame_id, feature_idx, track_id, x_left, x_right, y):
+        """Adds a stereo observation (feature in frame) to a track."""
         obs = Observation(frame_id, feature_idx, x_left, x_right, y)
         self.observations[(frame_id, track_id)] = obs
         self.feature_to_track[(frame_id, feature_idx)] = track_id
@@ -106,9 +125,11 @@ class TrackingDB:
     # ==========================
 
     def has_feature(self, frame_id, feature_idx):
+        """Checks if a feature has been tracked in a given frame."""
         return (frame_id, feature_idx) in self.feature_to_track
 
     def get_track_of_feature(self, frame_id, feature_idx):
+        """Returns track ID for a feature in a given frame, or None if not tracked."""
         return self.feature_to_track.get((frame_id, feature_idx), None)
 
     # ==========================
@@ -116,10 +137,12 @@ class TrackingDB:
     # ==========================
 
     def save(self, filename):
+        """Serializes tracking database to pickle file."""
         with open(filename, "wb") as f:
             pickle.dump(self, f)
 
     @staticmethod
     def load(filename):
+        """Deserializes tracking database from pickle file."""
         with open(filename, "rb") as f:
             return pickle.load(f)

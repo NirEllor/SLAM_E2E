@@ -7,6 +7,7 @@ import numpy as np
 NUM_FRAMES = lib.get_num_frames()
 
 def q4_1(nun_frames=NUM_FRAMES):
+    """4.1: Builds and caches tracking database from frame sequence."""
     return lib.build_data(nun_frames)
 
 def q4_2(db):
@@ -79,6 +80,7 @@ def q4_7(db):
     lib.plot_track_reprojection_error_analysis(frames, left_errors, right_errors)
 
 def q4():
+    """Exercise 4: Orchestrates tracking database construction and analysis pipeline."""
     print("========== Running Exercise 4 Execution Script ==========")
     
     # Trigger 4.1 sequence ingestion loop
@@ -96,6 +98,7 @@ def q4():
 
 
 def main():
+    """Entry point for Exercise 4."""
     q4()
 
 

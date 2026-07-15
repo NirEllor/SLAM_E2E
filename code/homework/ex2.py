@@ -54,6 +54,7 @@ def q2_3(kp1, kp2, matches):
 
 
 def q2():
+    """Exercise 2: Orchestrates rectified stereo filtering and triangulation pipeline."""
     print("========== Running Exercise 2 Pipeline ==========")
     
     # Load foundational data components from frame 0
@@ -75,6 +76,7 @@ def q2():
     plt.show()
 
 def main():
+    """Entry point for Exercise 2."""
     q2()
 
 if __name__ == '__main__':

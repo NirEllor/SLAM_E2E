@@ -1,8 +1,12 @@
 import os
 import van_utils as lib
 
+output_dir = "./outputs"
+os.makedirs(output_dir, exist_ok=True)
 
-def q7_1_detect_candidates(db, relative_poses, relative_covs, keyframes, mahalanobis_threshold=15.0, output_dir="."):
+
+def q7_1_detect_candidates(db, relative_poses, relative_covs, keyframes, mahalanobis_threshold=15.0, output_dir="./outputs"):
+    """7.1: Detects loop closure candidates using Mahalanobis distance filtering."""
     print("\n" + "=" * 80)
     print("RUNNING: Q7.1 - DETECT LOOP CLOSURE CANDIDATES (SHORTEST-PATH COVARIANCE VERSION)")
     print("=" * 80)
@@ -19,7 +23,8 @@ def q7_1_detect_candidates(db, relative_poses, relative_covs, keyframes, mahalan
     return candidates
 
 
-def q7_2_consensus_matching(db, loop_candidates, inlier_ratio_threshold=0.6, output_dir="."):
+def q7_2_consensus_matching(db, loop_candidates, inlier_ratio_threshold=0.6, output_dir="./outputs"):
+    """7.2: Verifies loop closures using RANSAC fundamental matrix consensus."""
     print("\n" + "=" * 80)
     print("RUNNING: Q7.2 - CONSENSUS MATCHING (VISUAL VERIFICATION)")
     print("=" * 80)
@@ -36,7 +41,8 @@ def q7_2_consensus_matching(db, loop_candidates, inlier_ratio_threshold=0.6, out
     return verified_loops
 
 
-def q7_3_relative_pose_estimation(db, verified_loops, output_dir="."):
+def q7_3_relative_pose_estimation(db, verified_loops, output_dir="./outputs"):
+    """7.3: Estimates relative poses for verified loop closures via bundle adjustment."""
     print("\n" + "=" * 80)
     print("RUNNING: Q7.3 - RELATIVE POSE ESTIMATION FROM SMALL BUNDLE")
     print("=" * 80)
@@ -47,7 +53,8 @@ def q7_3_relative_pose_estimation(db, verified_loops, output_dir="."):
     return loop_measurements
 
 
-def q7_4_update_pose_graph(cleaned_poses, cleaned_covs, loop_measurements, output_dir="."):
+def q7_4_update_pose_graph(cleaned_poses, cleaned_covs, loop_measurements, output_dir="./outputs"):
+    """7.4: Adds loop closure constraints to pose graph and re-optimizes."""
     print("\n" + "=" * 80)
     print("RUNNING: Q7.4 - UPDATE POSE GRAPH WITH LOOP CLOSURES")
     print("=" * 80)
@@ -66,7 +73,8 @@ def q7_4_update_pose_graph(cleaned_poses, cleaned_covs, loop_measurements, outpu
     return pg_results
 
 
-def q7_5_results(pg_results, loop_measurements, output_dir="."):
+def q7_5_results(pg_results, loop_measurements, output_dir="./outputs"):
+    """7.5: Generates final reports and visualizations for loop closure results."""
     print("\n" + "=" * 80)
     print("RUNNING: Q7.5 - FINAL PLOTS AND REPORT NUMBERS")
     print("=" * 80)
@@ -120,14 +128,14 @@ if __name__ == "__main__":
     )
 
     # Plot loop shortcuts over the newly decoupled trajectory values
-    lib.plot_loop_candidates(keyframes, candidates, optimized_values, output_dir=".")
+    lib.plot_loop_candidates(keyframes, candidates, optimized_values, output_dir="./outputs")
 
     # 4. Execute Step 7.2
     inlier_ratio_threshold = 0.75
     verified_loops = q7_2_consensus_matching(
         db, candidates,
         inlier_ratio_threshold,
-        output_dir="."
+        output_dir="./outputs"
     )
 
     loop_measurements = q7_3_relative_pose_estimation(
