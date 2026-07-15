@@ -903,6 +903,11 @@ def plot_full_trajectory_comparison(pnp_positions, bundle_ids, bundle_positions,
 
 def plot_kitti_sequence_error(segment_results, ylabel, title, output_path):
     """Plots KITTI sequence error for segments of different lengths (100, 400, 800 frames)."""
+    # Early abort if no data at all
+    total_data_points = sum(len(v) if isinstance(v, list) else 0 for v in segment_results.values())
+    if total_data_points == 0:
+        return
+
     plt.figure(figsize=(12, 5))
     colors = {100: "blue", 400: "orange", 800: "red"}
     has_data = False
@@ -921,10 +926,8 @@ def plot_kitti_sequence_error(segment_results, ylabel, title, output_path):
         plt.title(title)
         plt.grid(True)
         plt.legend()
-    else:
-        plt.text(0.5, 0.5, "No valid data to plot", ha="center", va="center", transform=plt.gca().transAxes)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=200)
     plt.close()
 
 

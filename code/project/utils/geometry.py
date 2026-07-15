@@ -106,15 +106,22 @@ def compute_kitti_sequence_errors(poses, gt_poses, segment_length):
     loc_err_pct, ang_err_per_m = [], []
     for start in range(0, n - segment_length):
         end = start + segment_length
-        R_est_rel, t_est_rel = relative_pose_w2c(*poses[start], *poses[end])
-        R_gt_rel, t_gt_rel = relative_pose_w2c(*gt_poses[start], *gt_poses[end])
-        loc_err, ang_err = compute_relative_pose_error_deg_m(R_est_rel, t_est_rel, R_gt_rel, t_gt_rel)
-        total_distance = sum(np.linalg.norm(camera_center(*gt_poses[i+1]) - camera_center(*gt_poses[i]))
-                              for i in range(start, end))
-        if total_distance < 1e-6:
+        try:
+            R_est_rel, t_est_rel = relative_pose_w2c(*poses[start], *poses[end])
+            R_gt_rel, t_gt_rel = relative_pose_w2c(*gt_poses[start], *gt_poses[end])
+            loc_err, ang_err = compute_relative_pose_error_deg_m(R_est_rel, t_est_rel, R_gt_rel, t_gt_rel)
+            total_distance = sum(np.linalg.norm(camera_center(*gt_poses[i+1]) - camera_center(*gt_poses[i]))
+                                  for i in range(start, end))
+            if total_distance < 1e-6:
+                continue
+            loc_norm = 100.0 * loc_err / total_distance
+            ang_norm = ang_err / total_distance
+            # Only append if values are finite
+            if np.isfinite(loc_norm) and np.isfinite(ang_norm):
+                loc_err_pct.append(loc_norm)
+                ang_err_per_m.append(ang_norm)
+        except Exception:
             continue
-        loc_err_pct.append(100.0 * loc_err / total_distance)
-        ang_err_per_m.append(ang_err / total_distance)
     return loc_err_pct, ang_err_per_m
 
 

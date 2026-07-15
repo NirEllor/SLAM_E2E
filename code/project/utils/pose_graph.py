@@ -281,30 +281,37 @@ def compute_kitti_sequence_errors_keyframes(keyframe_ids, keyframe_poses_c2w, gt
 
         if end_kf_idx not in keyframe_poses_c2w or start_kf_idx not in keyframe_poses_c2w:
             continue
-        R_est_sf, t_est_sf = keyframe_poses_c2w[start_kf_idx]
-        R_est_ef, t_est_ef = keyframe_poses_c2w[end_kf_idx]
-        pose_est_sf = gtsam.Pose3(gtsam.Rot3(R_est_sf), gtsam.Point3(*t_est_sf.flatten()))
-        pose_est_ef = gtsam.Pose3(gtsam.Rot3(R_est_ef), gtsam.Point3(*t_est_ef.flatten()))
-        rel_pose_est = pose_est_sf.between(pose_est_ef)
+        try:
+            R_est_sf, t_est_sf = keyframe_poses_c2w[start_kf_idx]
+            R_est_ef, t_est_ef = keyframe_poses_c2w[end_kf_idx]
+            pose_est_sf = gtsam.Pose3(gtsam.Rot3(R_est_sf), gtsam.Point3(*t_est_sf.flatten()))
+            pose_est_ef = gtsam.Pose3(gtsam.Rot3(R_est_ef), gtsam.Point3(*t_est_ef.flatten()))
+            rel_pose_est = pose_est_sf.between(pose_est_ef)
 
-        R_gt_sf, t_gt_sf = gt_poses[start_kf]
-        R_gt_ef, t_gt_ef = gt_poses[end_kf]
-        pose_gt_sf = get_c2w_pose(R_gt_sf, t_gt_sf)
-        pose_gt_ef = get_c2w_pose(R_gt_ef, t_gt_ef)
-        rel_pose_gt = pose_gt_sf.between(pose_gt_ef)
-        rel_pose_err = rel_pose_est.inverse().compose(rel_pose_gt)
+            R_gt_sf, t_gt_sf = gt_poses[start_kf]
+            R_gt_ef, t_gt_ef = gt_poses[end_kf]
+            pose_gt_sf = get_c2w_pose(R_gt_sf, t_gt_sf)
+            pose_gt_ef = get_c2w_pose(R_gt_ef, t_gt_ef)
+            rel_pose_gt = pose_gt_sf.between(pose_gt_ef)
+            rel_pose_err = rel_pose_est.inverse().compose(rel_pose_gt)
 
-        R_err = rel_pose_err.rotation().matrix()
-        t_err = np.array(rel_pose_err.translation()).flatten()
-        loc_err = float(np.linalg.norm(t_err))
-        ang_err = relative_rotation_angle_deg(np.eye(3), R_err)
+            R_err = rel_pose_err.rotation().matrix()
+            t_err = np.array(rel_pose_err.translation()).flatten()
+            loc_err = float(np.linalg.norm(t_err))
+            ang_err = relative_rotation_angle_deg(np.eye(3), R_err)
 
-        total_distance = sum(np.linalg.norm(camera_center(*gt_poses[i+1]) - camera_center(*gt_poses[i]))
-                              for i in range(start_kf, end_kf))
-        if total_distance < 1e-6:
+            total_distance = sum(np.linalg.norm(camera_center(*gt_poses[i+1]) - camera_center(*gt_poses[i]))
+                                  for i in range(start_kf, end_kf))
+            if total_distance < 1e-6:
+                continue
+            loc_norm = 100.0 * loc_err / total_distance
+            ang_norm = ang_err / total_distance
+            # Only append if values are finite
+            if np.isfinite(loc_norm) and np.isfinite(ang_norm):
+                loc_err_pct.append(loc_norm)
+                ang_err_per_m.append(ang_norm)
+        except Exception:
             continue
-        loc_err_pct.append(100.0 * loc_err / total_distance)
-        ang_err_per_m.append(ang_err / total_distance)
 
     return loc_err_pct, ang_err_per_m
 

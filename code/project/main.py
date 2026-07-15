@@ -970,7 +970,12 @@ def analyze_kitti_sequence_errors(db, keyframes, bundle_keyframe_poses):
             bundle_poses_dict = {}
             for i, kf in enumerate(keyframes):
                 if kf in bundle_keyframe_poses:
-                    bundle_poses_dict[i] = bundle_keyframe_poses[kf]
+                    pose_gtsam = bundle_keyframe_poses[kf]
+                    # Convert GTSAM Pose3 (C2W) to (R, t) tuple
+                    R_c2w = np.array(pose_gtsam.rotation().matrix())
+                    t_c2w = np.array(pose_gtsam.translation()).reshape(3, 1)
+                    bundle_poses_dict[i] = (R_c2w, t_c2w)
+
             if bundle_poses_dict:
                 loc_pct, ang_m = compute_kitti_sequence_errors_keyframes(
                     keyframes, bundle_poses_dict, read_ground_truth_poses(), seg_len
@@ -980,11 +985,13 @@ def analyze_kitti_sequence_errors(db, keyframes, bundle_keyframe_poses):
                 if loc_pct and ang_m:
                     print(f"  Bundle segment {seg_len}: {len(loc_pct)} segments, location error {np.mean(loc_pct):.2f}%, angle error {np.mean(ang_m):.4f} deg/m")
                 else:
-                    print(f"  Bundle segment {seg_len}: no valid segments (loc={len(loc_pct)}, ang={len(ang_m)})")
+                    print(f"  Bundle segment {seg_len}: {len(bundle_poses_dict)} poses, but no valid segments (loc={len(loc_pct)}, ang={len(ang_m)})")
             else:
-                print(f"  Bundle segment {seg_len}: no bundle poses available")
+                print(f"  Bundle segment {seg_len}: no bundle poses available ({len(keyframes)} keyframes, {len(bundle_keyframe_poses)} in poses dict)")
         except Exception as e:
+            import traceback
             print(f"  Bundle segment {seg_len}: error ({type(e).__name__}: {e})")
+            traceback.print_exc()
 
     # Only plot if we have non-empty data
     pnp_loc_has_data = any(len(v) > 0 for v in pnp_loc_results.values())
