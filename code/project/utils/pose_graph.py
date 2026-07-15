@@ -15,7 +15,8 @@ import gtsam
 from gtsam import symbol
 from gtsam.utils import plot as gtsam_plot
 
-from .bundle_adjustment import pose_translation_np, solve_bundle_with_prior_sigma
+from .bundle_adjustment import pose_translation_np, solve_bundle_with_prior_sigma, get_c2w_pose
+from .geometry import read_ground_truth_poses, relative_rotation_angle_deg
 
 
 def covariance_to_noise_model(cov, min_sigma=1e-6):
@@ -197,6 +198,115 @@ def clean_pose_graph_edges(relative_poses, relative_covs):
 
 # Alias for backward compatibility with van_utils.py naming
 run_and_plot_prior_sensitivity = run_prior_sensitivity_sweep
+
+
+def compute_pose_graph_absolute_error(values, keyframe_ids=None):
+    """Computes absolute PnP estimation error (X/Y/Z/norm + angle) for pose graph results vs ground truth."""
+    from .bundle_adjustment import pose_translation_np
+    gt_poses = read_ground_truth_poses()
+    kf_ids, C_est, err_x, err_y, err_z, err_norm, err_angle = [], [], [], [], [], [], []
+
+    for key in values.keys():
+        sym = gtsam.Symbol(key)
+        if sym.chr() == ord("c"):
+            kf_id = sym.index()
+            if kf_id >= len(gt_poses):
+                continue
+            pose_est = values.atPose3(key)
+            C_e = pose_translation_np(pose_est)
+            C_e = np.array(C_e).flatten()
+            R_gt, t_gt = gt_poses[kf_id]
+            from .geometry import camera_center
+            C_g = camera_center(R_gt, t_gt)
+            diff = C_e - C_g
+            R_c2w_est = pose_est.rotation().matrix()
+            R_c2w_gt = get_c2w_pose(R_gt, t_gt).rotation().matrix()
+            kf_ids.append(kf_id)
+            C_est.append(C_e)
+            err_x.append(float(diff[0]))
+            err_y.append(float(diff[1]))
+            err_z.append(float(diff[2]))
+            err_norm.append(float(np.linalg.norm(diff)))
+            err_angle.append(relative_rotation_angle_deg(R_c2w_est, R_c2w_gt))
+
+    sort_idx = np.argsort(kf_ids)
+    return {
+        "frame_ids": [kf_ids[i] for i in sort_idx],
+        "positions": np.array([C_est[i] for i in sort_idx]),
+        "err_x": [err_x[i] for i in sort_idx],
+        "err_y": [err_y[i] for i in sort_idx],
+        "err_z": [err_z[i] for i in sort_idx],
+        "err_norm": [err_norm[i] for i in sort_idx],
+        "err_angle": [err_angle[i] for i in sort_idx]
+    }
+
+
+def compute_bundle_relative_error_vs_gt(relative_poses):
+    """Computes relative pose error (location/angle) for bundle-optimized edges vs ground truth."""
+    gt_poses = read_ground_truth_poses()
+    edge_ids, loc_errors, ang_errors = [], [], []
+
+    for (sf, ef), rel_pose_est in sorted(relative_poses.items()):
+        if sf >= len(gt_poses) or ef >= len(gt_poses):
+            continue
+        R_gt_sf, t_gt_sf = gt_poses[sf]
+        R_gt_ef, t_gt_ef = gt_poses[ef]
+        pose_sf_c2w = get_c2w_pose(R_gt_sf, t_gt_sf)
+        pose_ef_c2w = get_c2w_pose(R_gt_ef, t_gt_ef)
+        rel_pose_gt = pose_sf_c2w.between(pose_ef_c2w)
+        rel_pose_err = rel_pose_est.inverse().compose(rel_pose_gt)
+        R_err = rel_pose_err.rotation().matrix()
+        t_err = np.array(rel_pose_err.translation()).flatten()
+        edge_ids.append(len(edge_ids))
+        loc_errors.append(float(np.linalg.norm(t_err)))
+        ang_errors.append(relative_rotation_angle_deg(np.eye(3), R_err))
+
+    return edge_ids, loc_errors, ang_errors
+
+
+def compute_kitti_sequence_errors_keyframes(keyframe_ids, keyframe_poses_c2w, gt_poses, segment_length):
+    """Computes KITTI-style errors for bundle-optimized keyframe poses (snapping segment ends to closest keyframe)."""
+    from .geometry import camera_center
+    loc_err_pct, ang_err_per_m = [], []
+
+    for start_kf_idx in range(len(keyframe_ids)):
+        start_kf = keyframe_ids[start_kf_idx]
+        if start_kf + segment_length >= len(gt_poses):
+            break
+        end_target = start_kf + segment_length
+        end_kf = min(keyframe_ids, key=lambda kf: abs(kf - end_target)) if keyframe_ids else end_target
+        if end_kf <= start_kf or end_kf >= len(gt_poses):
+            continue
+        end_kf_idx = keyframe_ids.index(end_kf)
+
+        if end_kf_idx not in keyframe_poses_c2w or start_kf_idx not in keyframe_poses_c2w:
+            continue
+        R_est_sf, t_est_sf = keyframe_poses_c2w[start_kf_idx]
+        R_est_ef, t_est_ef = keyframe_poses_c2w[end_kf_idx]
+        pose_est_sf = gtsam.Pose3(gtsam.Rot3(R_est_sf), gtsam.Point3(*t_est_sf.flatten()))
+        pose_est_ef = gtsam.Pose3(gtsam.Rot3(R_est_ef), gtsam.Point3(*t_est_ef.flatten()))
+        rel_pose_est = pose_est_sf.between(pose_est_ef)
+
+        R_gt_sf, t_gt_sf = gt_poses[start_kf]
+        R_gt_ef, t_gt_ef = gt_poses[end_kf]
+        pose_gt_sf = get_c2w_pose(R_gt_sf, t_gt_sf)
+        pose_gt_ef = get_c2w_pose(R_gt_ef, t_gt_ef)
+        rel_pose_gt = pose_gt_sf.between(pose_gt_ef)
+        rel_pose_err = rel_pose_est.inverse().compose(rel_pose_gt)
+
+        R_err = rel_pose_err.rotation().matrix()
+        t_err = np.array(rel_pose_err.translation()).flatten()
+        loc_err = float(np.linalg.norm(t_err))
+        ang_err = relative_rotation_angle_deg(np.eye(3), R_err)
+
+        total_distance = sum(np.linalg.norm(camera_center(*gt_poses[i+1]) - camera_center(*gt_poses[i]))
+                              for i in range(start_kf, end_kf))
+        if total_distance < 1e-6:
+            continue
+        loc_err_pct.append(100.0 * loc_err / total_distance)
+        ang_err_per_m.append(ang_err / total_distance)
+
+    return loc_err_pct, ang_err_per_m
 
 
 # Note: Visualization functions plot_pose_graph_trajectory, plot_pose_graph_with_covariances,

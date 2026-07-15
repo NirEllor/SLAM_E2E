@@ -773,3 +773,222 @@ def plot_location_uncertainty_size(no_loop_values, no_loop_marginals, loop_value
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "task_7_5_location_uncertainty_size.png"), dpi=200)
     plt.close()
+
+
+def plot_matches_per_frame(matches_per_frame, output_dir="."):
+    """Displays the number of matches per frame with mean and variance bands."""
+    frames = np.arange(len(matches_per_frame))
+    mean_matches = np.mean(matches_per_frame)
+    plt.figure(figsize=(14, 5))
+    plt.plot(frames, matches_per_frame, linewidth=1.5, label="matches per frame")
+    plt.axhline(mean_matches, color="r", linestyle="--", linewidth=1, label=f"mean = {mean_matches:.1f}")
+    plt.xlabel("Frame")
+    plt.ylabel("Number of Matches")
+    plt.grid(True)
+    plt.legend()
+    plt.title("Task 4.8: Matches per Frame")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "task_4_8_matches_per_frame.png"), dpi=200)
+    plt.close()
+
+
+def plot_absolute_location_error_components(frame_ids, err_x, err_y, err_z, err_norm, title, output_path):
+    """Plots absolute location error components (X, Y, Z, norm) on one figure."""
+    plt.figure(figsize=(12, 5))
+    plt.plot(frame_ids, err_x, linewidth=1, label="X error (m)", alpha=0.8)
+    plt.plot(frame_ids, err_y, linewidth=1, label="Y error (m)", alpha=0.8)
+    plt.plot(frame_ids, err_z, linewidth=1, label="Z error (m)", alpha=0.8)
+    plt.plot(frame_ids, err_norm, linewidth=1.5, label="Total error norm (m)", alpha=0.9)
+    plt.xlabel("Frame")
+    plt.ylabel("Error (m)")
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+
+
+def plot_absolute_angle_error(frame_ids, err_angle, title, output_path):
+    """Plots absolute angle error in degrees."""
+    plt.figure(figsize=(12, 5))
+    plt.plot(frame_ids, err_angle, linewidth=1, label="Angle error (deg)")
+    plt.xlabel("Frame")
+    plt.ylabel("Angle Error (degrees)")
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+
+
+def plot_bundle_optimization_error(window_start_ids, mean_initial_errors, mean_final_errors, output_dir="./outputs"):
+    """Plots mean factor error before and after bundle adjustment per window."""
+    plt.figure(figsize=(12, 5))
+    plt.plot(window_start_ids, mean_initial_errors, marker="o", linewidth=1.5, label="Initial Error", color="orange")
+    plt.plot(window_start_ids, mean_final_errors, marker="o", linewidth=1.5, label="Optimized Error", color="blue")
+    plt.xlabel("Bundle Starting at Frame idx")
+    plt.ylabel("Mean Factor Error")
+    plt.title("Task 5.4: Bundle Optimization Error")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "task_5_4_mean_factor_error.png"), dpi=200)
+    plt.close()
+
+
+def plot_bundle_projection_error(window_start_ids, median_initial_errors, median_final_errors, output_dir="./outputs"):
+    """Plots median projection error before and after bundle adjustment per window."""
+    plt.figure(figsize=(12, 5))
+    plt.plot(window_start_ids, median_initial_errors, marker="o", linewidth=1.5, label="Initial Error", color="orange")
+    plt.plot(window_start_ids, median_final_errors, marker="o", linewidth=1.5, label="Optimized Error", color="blue")
+    plt.xlabel("Bundle Starting at Frame idx")
+    plt.ylabel("Median Projection Error (pixels)")
+    plt.title("Task 5.4: Bundle Projection Error")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "task_5_4_median_projection_error.png"), dpi=200)
+    plt.close()
+
+
+def plot_projection_error_vs_distance(distances, median_errors, title, output_path):
+    """Plots median projection error vs distance from reference frame."""
+    plt.figure(figsize=(12, 5))
+    plt.plot(distances, median_errors, marker="o", linewidth=1.5)
+    plt.xlabel("Distance from Reference Frame")
+    plt.ylabel("Median Projection Error (pixels)")
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+
+
+def plot_relative_error_comparison(edge_ids, bundle_errors, pnp_errors, ylabel, title, output_path):
+    """Plots bundle vs PnP relative pose errors on the same figure."""
+    plt.figure(figsize=(12, 5))
+    plt.plot(edge_ids, bundle_errors, marker="o", linewidth=1, label="Bundle", alpha=0.8)
+    plt.plot(edge_ids, pnp_errors, marker="s", linewidth=1, label="PnP", alpha=0.8)
+    plt.xlabel("Edge Index")
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+
+
+def plot_full_trajectory_comparison(pnp_positions, bundle_ids, bundle_positions, pg_ids, pg_positions, gt_positions, output_dir="."):
+    """Plots overlaid trajectories (PnP, Bundle, Pose-Graph+LC, GT) bird's-eye X-Z view."""
+    plt.figure(figsize=(12, 8))
+    plt.plot(gt_positions[:, 0], gt_positions[:, 2], "g--", linewidth=2, label="Ground Truth", alpha=0.7)
+    plt.plot(pnp_positions[:, 0], pnp_positions[:, 2], linewidth=1.5, label="PnP", alpha=0.7)
+    if len(bundle_positions) > 0:
+        plt.scatter(bundle_positions[:, 0], bundle_positions[:, 2], marker="o", s=30, label="Bundle Keyframes", alpha=0.6)
+    if len(pg_positions) > 0:
+        plt.scatter(pg_positions[:, 0], pg_positions[:, 2], marker="^", s=30, label="Pose-Graph+LC Keyframes", alpha=0.6)
+    plt.xlabel("X (m)")
+    plt.ylabel("Z (m)")
+    plt.title("Task Summary: Full Trajectory Comparison (Bird's Eye)")
+    plt.grid(True)
+    plt.legend()
+    plt.axis("equal")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "task_summary_full_trajectory_comparison.png"), dpi=200)
+    plt.close()
+
+
+def plot_kitti_sequence_error(segment_results, ylabel, title, output_path):
+    """Plots KITTI sequence error for segments of different lengths (100, 400, 800 frames)."""
+    plt.figure(figsize=(12, 5))
+    colors = {100: "blue", 400: "orange", 800: "red"}
+    has_data = False
+    for seg_len in sorted(segment_results.keys()):
+        errs = segment_results[seg_len]
+        if errs and len(errs) > 0:
+            # Filter out NaN values for plotting
+            valid_indices = [i for i, err in enumerate(errs) if np.isfinite(err)]
+            if valid_indices:
+                valid_errs = [errs[i] for i in valid_indices]
+                plt.plot(valid_indices, valid_errs, marker="o", linewidth=1, label=f"Segment Length {seg_len}", color=colors.get(seg_len, "gray"), alpha=0.8)
+                has_data = True
+    if has_data:
+        plt.xlabel("Segment Index")
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.grid(True)
+        plt.legend()
+    else:
+        plt.text(0.5, 0.5, "No valid data to plot", ha="center", va="center", transform=plt.gca().transAxes)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+
+
+def plot_loop_closure_match_stats(loop_measurements, output_dir="."):
+    """Plots loop closure match count and inlier ratio per successful loop."""
+    labels = [f"{m['start_kf']}-{m['end_kf']}" for m in loop_measurements]
+    match_counts = [m["good_matches_count"] for m in loop_measurements]
+    inlier_ratios = [m["inlier_ratio"] * 100 for m in loop_measurements]
+    x = np.arange(len(labels))
+    width = 0.35
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+    ax1.bar(x, match_counts, width, label="Good Matches")
+    ax1.set_ylabel("Match Count")
+    ax1.set_title("Task 7.5: Loop Closure Match Statistics")
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, rotation=45, ha="right")
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+
+    ax2.bar(x, inlier_ratios, width, label="Inlier Ratio")
+    ax2.set_ylabel("Inlier Ratio (%)")
+    ax2.set_xlabel("Loop Closure Pair")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels, rotation=45, ha="right")
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "task_7_5_loop_closure_match_stats.png"), dpi=200)
+    plt.close()
+
+
+def plot_angle_uncertainty_size(no_loop_values, no_loop_marginals, loop_values, loop_marginals, output_dir="."):
+    """Plots angle uncertainty (rotation block) for pose graph with and without loop closures."""
+    def _angle_uncertainty_trace(values, marginals):
+        ids, sizes = [], []
+        for key in values.keys():
+            sym = gtsam.Symbol(key)
+            if sym.chr() == ord("c"):
+                try:
+                    cov6 = marginals.marginalCovariance(key)
+                    cov_rot = cov6[np.ix_([0, 1, 2], [0, 1, 2])]
+                    det_val = max(np.linalg.det(cov_rot), 0.0)
+                    size_rad = np.power(det_val, 1.0 / 3.0)
+                    size_deg = float(np.degrees(size_rad))
+                    sizes.append(size_deg)
+                    ids.append(sym.index())
+                except Exception:
+                    pass
+        sort_idx = np.argsort(ids)
+        return [ids[i] for i in sort_idx], np.array([sizes[i] for i in sort_idx])
+
+    ids_no, unc_no = _angle_uncertainty_trace(no_loop_values, no_loop_marginals)
+    ids_lc, unc_lc = _angle_uncertainty_trace(loop_values, loop_marginals)
+
+    plt.figure(figsize=(12, 5))
+    plt.plot(ids_no, unc_no, marker="o", linewidth=1, label="without loop closures")
+    plt.plot(ids_lc, unc_lc, marker="o", linewidth=1, label="with loop closures")
+    plt.title("Task 7.5: Angle Uncertainty Size")
+    plt.xlabel("Keyframe")
+    plt.ylabel(r"$(|\Sigma_{rot}|)^{1/3}$ [degrees]")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "task_7_5_angle_uncertainty_size.png"), dpi=200)
+    plt.close()

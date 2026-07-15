@@ -121,7 +121,7 @@ def verify_loop_closures_consensus(db, loop_candidates, inlier_ratio_threshold, 
 
             if inlier_ratio >= inlier_ratio_threshold and inliers_count >= MIN_ABSOLUTE_INLIERS:
                 inlier_matches = [good_matches[i] for i in range(len(good_matches)) if mask[i][0] == 1]
-                verified_loops[c_n].append({"candidate_kf": c_i, "inliers_count": inliers_count, "inlier_matches": inlier_matches})
+                verified_loops[c_n].append({"candidate_kf": c_i, "inliers_count": inliers_count, "inlier_matches": inlier_matches, "good_matches_count": len(good_matches), "inlier_ratio": inlier_ratio})
                 total_verified_loops += 1
 
     return verified_loops, total_verified_loops
@@ -218,6 +218,8 @@ def estimate_verified_loop_relative_poses(db, verified_loops, output_dir="."):
         for loop in loops:
             try:
                 m = estimate_loop_relative_pose_bundle(db, loop["candidate_kf"], c_n, inlier_matches=loop.get("inlier_matches"), output_dir=output_dir)
+                m["good_matches_count"] = loop["good_matches_count"]
+                m["inlier_ratio"] = loop["inlier_ratio"]
                 loop_measurements.append(m)
             except Exception as e:
                 print(f"[Q7.3] Loop {loop['candidate_kf']}->{c_n}: FAILED ({e})")

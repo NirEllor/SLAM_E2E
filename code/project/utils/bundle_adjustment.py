@@ -240,3 +240,52 @@ def solve_bundle_with_prior_sigma(db, start_frame, end_frame, prior_sigma):
     """Wrapper for bundle window optimization with custom prior noise variances."""
     res = build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_window=150, prior_sigma=prior_sigma)
     return res["graph"], res["result"], res["window_frames"]
+
+
+def compute_window_projection_errors(db, bundle_res, K_gtsam):
+    """Computes median initial and final projection error over all optimized landmarks in a bundle window."""
+    initial_errors, final_errors = [], []
+    for track_id in bundle_res["optimized_landmark_ids"]:
+        point_key = symbol("q", track_id)
+        for f_id in bundle_res["window_frames"]:
+            obs = db.observation(f_id, track_id)
+            if obs is None or not valid_stereo_obs(obs, min_disp=1.0):
+                continue
+            pose_key = symbol("c", f_id)
+            if bundle_res["initial"].exists(point_key) and bundle_res["initial"].exists(pose_key):
+                pt_init = bundle_res["initial"].atPoint3(point_key)
+                pose_init = bundle_res["initial"].atPose3(pose_key)
+                err_init = compute_stereo_reprojection_error(pose_init, K_gtsam, pt_init, obs)
+                if np.isfinite(err_init):
+                    initial_errors.append(err_init)
+            if bundle_res["result"].exists(point_key) and bundle_res["result"].exists(pose_key):
+                pt_final = bundle_res["result"].atPoint3(point_key)
+                pose_final = bundle_res["result"].atPose3(pose_key)
+                err_final = compute_stereo_reprojection_error(pose_final, K_gtsam, pt_final, obs)
+                if np.isfinite(err_final):
+                    final_errors.append(err_final)
+    return (np.nanmedian(initial_errors) if initial_errors else np.nan,
+            np.nanmedian(final_errors) if final_errors else np.nan)
+
+
+def accumulate_window_projection_errors_by_distance(db, bundle_res, K_gtsam, errors_by_distance, max_distance=20):
+    """Mutates errors_by_distance dict by accumulating projection errors binned by frame distance from window start."""
+    start_frame = bundle_res["start_frame"]
+    for track_id in bundle_res["optimized_landmark_ids"]:
+        point_key = symbol("q", track_id)
+        for f_id in bundle_res["window_frames"]:
+            obs = db.observation(f_id, track_id)
+            if obs is None or not valid_stereo_obs(obs, min_disp=1.0) or not bundle_res["result"].exists(point_key):
+                continue
+            distance = f_id - start_frame
+            if distance > max_distance:
+                continue
+            pose_key = symbol("c", f_id)
+            if bundle_res["result"].exists(pose_key):
+                pt = bundle_res["result"].atPoint3(point_key)
+                pose = bundle_res["result"].atPose3(pose_key)
+                err = compute_stereo_reprojection_error(pose, K_gtsam, pt, obs)
+                if np.isfinite(err):
+                    if distance not in errors_by_distance:
+                        errors_by_distance[distance] = []
+                    errors_by_distance[distance].append(err)

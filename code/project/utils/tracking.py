@@ -136,6 +136,7 @@ def build_data(num_frames):
 
     db = TrackingDB()
     inlier_percentages = []
+    matches_per_frame = []
 
     R_global, t_global = np.eye(3), np.zeros((3, 1))
     camera_poses = [(R_global.copy(), t_global.copy())]
@@ -149,6 +150,7 @@ def build_data(num_frames):
 
         knn_matches = bf_matcher.knnMatch(prev_data["des_left"], curr_data["des_left"], k=2)
         temporal_matches = [m for m, n in knn_matches if m.distance < 0.7 * n.distance]
+        matches_per_frame.append(len(temporal_matches))
 
         try:
             correspondences = build_pnp_correspondences(prev_data, curr_data, temporal_matches)
@@ -205,6 +207,7 @@ def build_data(num_frames):
         prev_data = curr_data
 
     db.inlier_percentages = inlier_percentages
+    db.matches_per_frame = matches_per_frame
     db.camera_poses = camera_poses
     return db
 
@@ -292,3 +295,115 @@ def compute_track_reprojection_errors(db, track_id, frames, X_world, K, m_left0,
         right_errors.append(err_r)
 
     return left_errors, right_errors
+
+
+def triangulate_track_reference_point_from_pose(db, track_id, first_frame_id, K, m_left0, m_right0, R_first, t_first):
+    """Triangulates the 3D reference world coordinate from first observation using provided pose."""
+    obs_first = db.observation(first_frame_id, track_id)
+    P_L_first, P_R_first = prepare_stereo_projection_matrices(K, m_left0, m_right0, R_first, t_first)
+    p_left_first = np.array([obs_first.x_left, obs_first.y])
+    p_right_first = np.array([obs_first.x_right, obs_first.y])
+    return triangulate_point_linear(p_left_first, p_right_first, P_L_first, P_R_first)
+
+
+def compute_track_reprojection_errors_from_poses(db, track_id, frames, X_world, K, m_left0, m_right0, camera_poses):
+    """Computes left/right reprojection errors for a 3D point across all frames in a track using provided poses."""
+    left_errors = []
+    right_errors = []
+    for frame_id in frames:
+        obs = db.observation(frame_id, track_id)
+        R_curr_w2c, t_curr_w2c = camera_poses[frame_id]
+        P_left, P_right = prepare_stereo_projection_matrices(K, m_left0, m_right0, R_curr_w2c, t_curr_w2c)
+        proj_l = project_point(P_left, X_world)
+        proj_r = project_point(P_right, X_world)
+        obs_l = np.array([obs.x_left, obs.y])
+        obs_r = np.array([obs.x_right, obs.y])
+        left_errors.append(np.linalg.norm(proj_l - obs_l))
+        right_errors.append(np.linalg.norm(proj_r - obs_r))
+    return left_errors, right_errors
+
+
+def compute_pnp_projection_error_vs_distance(db, K, m_left0, m_right0, max_distance=40, min_track_length=5, sample_size=150, seed=0):
+    """Computes median projection error vs distance-from-reference for a sampled subset of tracks using PnP poses."""
+    rng = random.Random(seed)
+    errors_by_distance = {}
+    valid_tracks = [t_id for t_id in db.track_to_frames if len(db.frames(t_id)) >= min_track_length]
+    sampled = rng.sample(valid_tracks, min(sample_size, len(valid_tracks)))
+
+    for track_id in sampled:
+        frames = sorted(db.frames(track_id))
+        if not frames:
+            continue
+        first_frame = frames[0]
+        R_first, t_first = db.camera_poses[first_frame]
+        try:
+            X_world = triangulate_track_reference_point_from_pose(db, track_id, first_frame, K, m_left0, m_right0, R_first, t_first)
+            if not np.all(np.isfinite(X_world)):
+                continue
+            left_errors, right_errors = compute_track_reprojection_errors_from_poses(db, track_id, frames, X_world, K, m_left0, m_right0, db.camera_poses)
+            for dist, (l_err, r_err) in enumerate(zip(left_errors, right_errors)):
+                mean_err = (l_err + r_err) / 2.0
+                if dist <= max_distance:
+                    if dist not in errors_by_distance:
+                        errors_by_distance[dist] = []
+                    errors_by_distance[dist].append(mean_err)
+        except Exception:
+            continue
+
+    distances = sorted(errors_by_distance.keys())
+    median_errors = [np.nanmedian(errors_by_distance[d]) for d in distances]
+    return distances, median_errors
+
+
+def compute_absolute_pnp_error(db):
+    """Computes absolute PnP estimation error (X/Y/Z/norm + angle) vs ground truth."""
+    from .geometry import camera_center, relative_rotation_angle_deg
+    gt_poses = read_ground_truth_poses()
+    frame_ids, err_x, err_y, err_z, err_norm, err_angle = [], [], [], [], [], []
+
+    for frame_id, (R_est, t_est) in enumerate(db.camera_poses):
+        if frame_id >= len(gt_poses):
+            break
+        R_gt, t_gt = gt_poses[frame_id]
+        C_est = camera_center(R_est, t_est)
+        C_gt = camera_center(R_gt, t_gt)
+        diff = C_est - C_gt
+        frame_ids.append(frame_id)
+        err_x.append(float(diff[0]))
+        err_y.append(float(diff[1]))
+        err_z.append(float(diff[2]))
+        err_norm.append(float(np.linalg.norm(diff)))
+        err_angle.append(relative_rotation_angle_deg(R_est, R_gt))
+
+    return {
+        "frame_ids": frame_ids,
+        "err_x": err_x, "err_y": err_y, "err_z": err_z, "err_norm": err_norm,
+        "err_angle": err_angle
+    }
+
+
+def compute_pnp_relative_error_vs_gt(db, edges):
+    """Computes relative pose error (location/angle) for PnP-accumulated poses vs ground truth."""
+    from .geometry import relative_pose_w2c, compute_relative_pose_error_deg_m
+    gt_poses = read_ground_truth_poses()
+    edge_ids, loc_errors, ang_errors = [], [], []
+
+    for i, (sf, ef) in enumerate(sorted(edges)):
+        if sf >= len(db.camera_poses) or ef >= len(db.camera_poses):
+            continue
+        if sf >= len(gt_poses) or ef >= len(gt_poses):
+            continue
+        R_est_sf, t_est_sf = db.camera_poses[sf]
+        R_est_ef, t_est_ef = db.camera_poses[ef]
+        R_gt_sf, t_gt_sf = gt_poses[sf]
+        R_gt_ef, t_gt_ef = gt_poses[ef]
+
+        R_est_rel, t_est_rel = relative_pose_w2c(R_est_sf, t_est_sf, R_est_ef, t_est_ef)
+        R_gt_rel, t_gt_rel = relative_pose_w2c(R_gt_sf, t_gt_sf, R_gt_ef, t_gt_ef)
+        loc_err, ang_err = compute_relative_pose_error_deg_m(R_est_rel, t_est_rel, R_gt_rel, t_gt_rel)
+
+        edge_ids.append(i)
+        loc_errors.append(loc_err)
+        ang_errors.append(ang_err)
+
+    return edge_ids, loc_errors, ang_errors

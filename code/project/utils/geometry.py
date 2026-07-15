@@ -78,6 +78,46 @@ def compose_transform(R1, t1, R2, t2):
     return R2 @ R1, R2 @ t1 + t2
 
 
+def rotation_angle_deg(R):
+    """Computes the magnitude of a rotation matrix in degrees via the Rodrigues vector norm."""
+    rvec, _ = cv2.Rodrigues(R)
+    return float(np.linalg.norm(rvec) * 180.0 / np.pi)
+
+
+def relative_rotation_angle_deg(R_a, R_b):
+    """Computes the angular difference in degrees between two rotation matrices of the same convention."""
+    return rotation_angle_deg(R_a.T @ R_b)
+
+
+def relative_pose_w2c(R_a, t_a, R_b, t_b):
+    """Computes the relative W2C transform mapping frame a's camera frame into frame b's, by inverting a and composing with b."""
+    return compose_transform(R_a.T, -R_a.T @ t_a, R_b, t_b)
+
+
+def compute_relative_pose_error_deg_m(R_est, t_est, R_gt, t_gt):
+    """Computes the SE(3) residual (location error in meters, angle error in degrees) between an estimated and ground-truth relative pose."""
+    R_err, t_err = compose_transform(R_est.T, -R_est.T @ t_est, R_gt, t_gt)
+    return float(np.linalg.norm(t_err)), rotation_angle_deg(R_err)
+
+
+def compute_kitti_sequence_errors(poses, gt_poses, segment_length):
+    """Computes KITTI-style normalized relative location/angle error over all overlapping segments of a fixed frame length."""
+    n = min(len(poses), len(gt_poses))
+    loc_err_pct, ang_err_per_m = [], []
+    for start in range(0, n - segment_length):
+        end = start + segment_length
+        R_est_rel, t_est_rel = relative_pose_w2c(*poses[start], *poses[end])
+        R_gt_rel, t_gt_rel = relative_pose_w2c(*gt_poses[start], *gt_poses[end])
+        loc_err, ang_err = compute_relative_pose_error_deg_m(R_est_rel, t_est_rel, R_gt_rel, t_gt_rel)
+        total_distance = sum(np.linalg.norm(camera_center(*gt_poses[i+1]) - camera_center(*gt_poses[i]))
+                              for i in range(start, end))
+        if total_distance < 1e-6:
+            continue
+        loc_err_pct.append(100.0 * loc_err / total_distance)
+        ang_err_per_m.append(ang_err / total_distance)
+    return loc_err_pct, ang_err_per_m
+
+
 def project_point(P, X):
     """Projects a single 3D point X using projection matrix P into pixel space (u, v)."""
     X_h = np.append(X, 1.0)
