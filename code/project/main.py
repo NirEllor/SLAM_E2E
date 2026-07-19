@@ -1,28 +1,27 @@
 import os
 import random
 import cv2
-import matplotlib.pyplot as plt
 import gtsam
 from gtsam import symbol
 
 # Import from utils package
 import numpy as np
 from utils.geometry import (read_images, get_orb_features, read_cameras, run_single_pair,
-                           get_num_frames, build_pnp_correspondences, evaluate_supporters,
-                           camera_center, compose_transform, read_ground_truth_poses,
+                           get_num_frames, build_pnp_correspondences,
+                           camera_center, read_ground_truth_poses,
                            split_matches_by_rectified_pattern, compute_rectified_stereo_deviations,
                            triangulate_points_linear, triangulate_points_opencv, median_3d_distance,
                            get_matched_points, run_custom_pnp_ransac, find_four_view_supporters,
                            estimate_next_pose_with_rejection, compute_kitti_sequence_errors)
 from utils.tracking import (load_or_build_db, compute_tracking_statistics, print_tracking_statistics,
-                           select_track_by_min_length, compute_connectivity, compute_track_lengths,
+                           select_track_by_min_length, compute_connectivity,
                            select_long_track, triangulate_track_reference_point,
                            compute_track_reprojection_errors, compute_absolute_pnp_error,
                            compute_pnp_projection_error_vs_distance)
 from utils.bundle_adjustment import (init_gtsam_stereo_calibration, get_gtsam_camera_pose,
                                      pose_translation_np, choose_keyframes, solve_bundle_window,
                                      compute_single_factor_error, extract_optimized_geometry,
-                                     solve_bundle_with_prior_sigma, compute_window_projection_errors,
+                                     compute_window_projection_errors,
                                      accumulate_window_projection_errors_by_distance)
 from utils.pose_graph import (compute_relative_pose_and_covariance, compute_all_relative_constraints,
                               clean_pose_graph_edges, build_and_initialize_pose_graph, optimize_pose_graph,
@@ -55,7 +54,7 @@ def detect_and_visualize_orb_features(frame_index=0, plot=True):
     if plot:
         img_left_kp = cv2.drawKeypoints(img_left, kp_left, None, color=(0, 255, 0))
         img_right_kp = cv2.drawKeypoints(img_right, kp_right, None, color=(0, 255, 0))
-        plot_stereo_side_by_side(img_left_kp, img_right_kp, "ORB Keypoints")
+        plot_stereo_side_by_side(img_left_kp, img_right_kp, "ORB Keypoints", graph_id="1.1", func_name="detect_and_visualize_orb_features")
 
     return img_left, img_right, kp_left, kp_right, des_left, des_right
 
@@ -73,7 +72,7 @@ def compute_raw_bruteforce_matches(img_left, img_right, kp_left, kp_right, des_l
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     matches = bf.match(des_left, des_right)
 
-    draw_matches_custom(img_left, kp_left, img_right, kp_right, matches, "1.3: Random Raw Matches")
+    draw_matches_custom(img_left, kp_left, img_right, kp_right, matches, "Graph 1.3: Random Raw Matches\ndraw_matches_custom, visualization.py")
     return matches
 
 
@@ -90,7 +89,7 @@ def apply_lowe_ratio_test(img_left, img_right, kp_left, kp_right, des_left, des_
             rejected_matches.append(m)
 
     # Visualize filtered matches
-    draw_matches_custom(img_left, kp_left, img_right, kp_right, good_matches, f"1.4: Good Matches (Ratio={ratio_threshold})")
+    draw_matches_custom(img_left, kp_left, img_right, kp_right, good_matches, f"Graph 1.4a: Good Matches (Ratio={ratio_threshold})\ndraw_matches_custom, visualization.py")
 
     # Print summary metrics
     print("\n--- Task 1.4: Lowe's Ratio Test Summary ---")
@@ -103,7 +102,7 @@ def apply_lowe_ratio_test(img_left, img_right, kp_left, kp_right, des_left, des_
         fail = random.choice(rejected_matches)
         draw_matches_custom(
             img_left, kp_left, img_right, kp_right, [fail],
-            "1.4: Failed Ratio Test Match Example", num=1
+            "Graph 1.4b: Failed Ratio Test Match Example\ndraw_matches_custom, visualization.py", num=1
         )
 
 
@@ -183,8 +182,8 @@ def triangulate_and_compare_methods(idx=0):
     filtered_3d_linear = points_3d_linear[valid_mask]
     filtered_3d_opencv = points_3d_opencv[valid_mask]
 
-    plot_3d_points(filtered_3d_linear, title="2.3: Linear SVD Triangulation")
-    plot_3d_points(filtered_3d_opencv, title="2.3: OpenCV Triangulation")
+    plot_3d_points(filtered_3d_linear, title="Graph 2.3a: Linear SVD Triangulation")
+    plot_3d_points(filtered_3d_opencv, title="Graph 2.3b: OpenCV Triangulation")
 
     dist = median_3d_distance(filtered_3d_linear, filtered_3d_opencv)
     print(f"Median 3D distance between methods: {dist:.4f} m")
@@ -203,7 +202,7 @@ def generate_next_frame_point_cloud(idx=0):
     from utils.visualization import plot_3d_points
 
     frame_data = run_single_pair(idx=idx + 1, display=False)
-    plot_3d_points(frame_data['points_3d'], title=f"3.1: Frame {idx + 1} Landmarks")
+    plot_3d_points(frame_data['points_3d'], title=f"Graph 3.1: Frame {idx + 1} Landmarks")
     return frame_data
 
 
@@ -648,7 +647,7 @@ def extract_relative_pose_constraints(db):
     relative_pose, Sigma_rel = compute_relative_pose_and_covariance(db, c0_idx, ck_idx)
     print(f"\nRelative Pose between keyframes c{c0_idx} and c{ck_idx}:")
     print(relative_pose)
-    print(f"\nConditional covariance P(c{ck_idx} | c{c0_idx}):")
+    print(f"\nRelative pose covariance (T_0{ck_idx} = T_0^(-1) T_{ck_idx}):")
     print(np.array2string(Sigma_rel, precision=8, suppress_small=True))
 
     # Process all consecutive pairs
@@ -667,12 +666,12 @@ def extract_relative_pose_constraints(db):
     if bundle_edge_ids:
         plot_relative_error_comparison(
             bundle_edge_ids, bundle_loc_errors, pnp_loc_errors if pnp_loc_errors else bundle_loc_errors,
-            "Location Error (m)", "Task 6.1: Relative Location Error",
+            "Location Error (m)", "Graph 6.1a: Relative Location Error",
             os.path.join(OUTPUT_DIR, "task_6_1_relative_location_error.png")
         )
         plot_relative_error_comparison(
             bundle_edge_ids, bundle_ang_errors, pnp_ang_errors if pnp_ang_errors else bundle_ang_errors,
-            "Angle Error (deg)", "Task 6.1: Relative Angle Error",
+            "Angle Error (deg)", "Graph 6.1b: Relative Angle Error",
             os.path.join(OUTPUT_DIR, "task_6_1_relative_angle_error.png")
         )
         print(f"Bundle relative location error (mean): {np.mean(bundle_loc_errors):.4f} m")
@@ -704,7 +703,7 @@ def optimize_pose_graph_from_constraints(db, relative_poses, relative_covs):
     # Plot initial state
     plot_pose_graph_trajectory(
         initial,
-        title="6.2: Initial Pose Graph Trajectory (Fixed Gaps)",
+        title="Graph 6.2a: Initial Pose Graph Trajectory (Fixed Gaps)",
         output_path=os.path.join(OUTPUT_DIR, "task_6_2_initial_pose_graph.png")
     )
 
@@ -715,13 +714,13 @@ def optimize_pose_graph_from_constraints(db, relative_poses, relative_covs):
     # Save final visual artifacts
     plot_pose_graph_trajectory(
         result,
-        title="6.2: Optimized Pose Graph Trajectory",
+        title="Graph 6.2b: Optimized Pose Graph Trajectory",
         output_path=os.path.join(OUTPUT_DIR, "task_6_2_optimized_pose_graph.png")
     )
     plot_pose_graph_with_covariances(
         result,
         marginals,
-        title="6.2: Optimized Pose Graph With Final Marginal Covariances",
+        title="Graph 6.2c: Optimized Pose Graph With Final Marginal Covariances",
         output_path=os.path.join(OUTPUT_DIR, "task_6_2_pose_graph_covariances.png"),
         covariance_step=5,
     )
@@ -751,7 +750,6 @@ def run_pose_graph_optimization_pipeline(db):
 ############################################################################
 def detect_loop_candidates(db, relative_poses, relative_covs, keyframes, mahalanobis_threshold=1000.0):
     """Task 7.1: Detect loop closure candidates using Mahalanobis distance filtering."""
-    from utils.bundle_adjustment import choose_keyframes
 
     print("\n" + "=" * 80)
     print("TASK 7.1: DETECT LOOP CLOSURE CANDIDATES (SHORTEST-PATH COVARIANCE VERSION)")
@@ -858,12 +856,12 @@ def report_loop_closure_results(pg_results, loop_measurements):
         plot_absolute_location_error_components(
             no_loop_abs_err["frame_ids"], no_loop_abs_err["err_x"], no_loop_abs_err["err_y"],
             no_loop_abs_err["err_z"], no_loop_abs_err["err_norm"],
-            "Task 7.5: Pose Graph Absolute Location Error (No Loop Closure)",
+            "Graph 7.5d: Pose Graph Absolute Location Error (No Loop Closure)",
             os.path.join(OUTPUT_DIR, "task_7_5_absolute_location_error_no_lc.png")
         )
         plot_absolute_angle_error(
             no_loop_abs_err["frame_ids"], no_loop_abs_err["err_angle"],
-            "Task 7.5: Pose Graph Absolute Angle Error (No Loop Closure)",
+            "Graph 7.5f: Pose Graph Absolute Angle Error (No Loop Closure)",
             os.path.join(OUTPUT_DIR, "task_7_5_absolute_angle_error_no_lc.png")
         )
 
@@ -871,12 +869,12 @@ def report_loop_closure_results(pg_results, loop_measurements):
         plot_absolute_location_error_components(
             loop_abs_err["frame_ids"], loop_abs_err["err_x"], loop_abs_err["err_y"],
             loop_abs_err["err_z"], loop_abs_err["err_norm"],
-            "Task 7.5: Pose Graph Absolute Location Error (With Loop Closure)",
+            "Graph 7.5e: Pose Graph Absolute Location Error (With Loop Closure)",
             os.path.join(OUTPUT_DIR, "task_7_5_absolute_location_error_lc.png")
         )
         plot_absolute_angle_error(
             loop_abs_err["frame_ids"], loop_abs_err["err_angle"],
-            "Task 7.5: Pose Graph Absolute Angle Error (With Loop Closure)",
+            "Graph 7.5g: Pose Graph Absolute Angle Error (With Loop Closure)",
             os.path.join(OUTPUT_DIR, "task_7_5_absolute_angle_error_lc.png")
         )
 
@@ -922,12 +920,12 @@ def analyze_absolute_pnp_error(db):
     plot_absolute_location_error_components(
         pnp_err["frame_ids"], pnp_err["err_x"], pnp_err["err_y"],
         pnp_err["err_z"], pnp_err["err_norm"],
-        "Performance Analysis: Absolute PnP Location Error",
+        "Graph PA.1a: Absolute PnP Location Error",
         os.path.join(OUTPUT_DIR, "task_pa_absolute_location_error_pnp.png")
     )
     plot_absolute_angle_error(
         pnp_err["frame_ids"], pnp_err["err_angle"],
-        "Performance Analysis: Absolute PnP Angle Error",
+        "Graph PA.1b: Absolute PnP Angle Error",
         os.path.join(OUTPUT_DIR, "task_pa_absolute_angle_error_pnp.png")
     )
 
@@ -942,7 +940,7 @@ def analyze_pnp_projection_error_vs_distance(db):
     if distances:
         plot_projection_error_vs_distance(
             distances, median_errors,
-            "Performance Analysis: PnP Projection Error vs Distance",
+            "Graph PA.2: PnP Projection Error vs Distance",
             os.path.join(OUTPUT_DIR, "task_pa_pnp_projection_error_vs_distance.png")
         )
 
@@ -1002,25 +1000,25 @@ def analyze_kitti_sequence_errors(db, keyframes, bundle_keyframe_poses):
     if pnp_loc_has_data:
         plot_kitti_sequence_error(
             pnp_loc_results, "Location Error (%)",
-            "Performance Analysis: KITTI PnP Location Error by Segment",
+            "Graph PA.3a: KITTI PnP Location Error by Segment",
             os.path.join(OUTPUT_DIR, "task_pa_kitti_pnp_location_error.png")
         )
     if pnp_ang_has_data:
         plot_kitti_sequence_error(
             pnp_ang_results, "Angle Error (deg/m)",
-            "Performance Analysis: KITTI PnP Angle Error by Segment",
+            "Graph PA.3b: KITTI PnP Angle Error by Segment",
             os.path.join(OUTPUT_DIR, "task_pa_kitti_pnp_angle_error.png")
         )
     if bundle_loc_has_data:
         plot_kitti_sequence_error(
             bundle_loc_results, "Location Error (%)",
-            "Performance Analysis: KITTI Bundle Location Error by Segment",
+            "Graph PA.3c: KITTI Bundle Location Error by Segment",
             os.path.join(OUTPUT_DIR, "task_pa_kitti_bundle_location_error.png")
         )
     if bundle_ang_has_data:
         plot_kitti_sequence_error(
             bundle_ang_results, "Angle Error (deg/m)",
-            "Performance Analysis: KITTI Bundle Angle Error by Segment",
+            "Graph PA.3d: KITTI Bundle Angle Error by Segment",
             os.path.join(OUTPUT_DIR, "task_pa_kitti_bundle_angle_error.png")
         )
 
@@ -1041,7 +1039,8 @@ def compare_full_pipeline_trajectories(db, bundle_keyframe_poses, pg_results):
         pg_pos = np.array([[0, 0, 0]])
 
     plot_full_trajectory_comparison(
-        pnp_positions, bundle_ids, bundle_pos, pg_ids, pg_pos, gt_positions, output_dir=OUTPUT_DIR
+        pnp_positions, bundle_ids, bundle_pos, pg_ids, pg_pos, gt_positions, output_dir=OUTPUT_DIR,
+        title="Graph PA.4: Full Trajectory Comparison (Bird's Eye)"
     )
 
 

@@ -124,8 +124,19 @@ def choose_keyframes(db, distance_threshold=2.5, max_gap=20, min_gap=5):
     return keyframes
 
 
-def build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_window=150, prior_sigma=1e-6):
-    """Core bundle adjustment builder and solver function shared by standard and prior sensitivity tests."""
+def build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_window=150, prior_sigma=1e-6,
+                               stereo_sigma=1.0, huber_k=2.0):
+    """Core bundle adjustment builder and solver function shared by standard and prior sensitivity tests.
+
+    Args:
+        db: TrackingDB object
+        start_frame: starting frame index
+        end_frame: ending frame index
+        max_tracks_per_window: max landmarks to optimize per window
+        prior_sigma: anchor pose prior noise (degrees of freedom scale)
+        stereo_sigma: measurement noise sigma (pixels) for stereo reprojection
+        huber_k: Huber threshold (pixels) for robust kernel
+    """
     K_gtsam = init_gtsam_stereo_calibration()
     _, P_left0, P_right0 = read_cameras()
 
@@ -133,8 +144,8 @@ def build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_windo
     initial_estimate = gtsam.Values()
 
     measurement_noise = gtsam.noiseModel.Robust.Create(
-        gtsam.noiseModel.mEstimator.Huber.Create(2.0),
-        gtsam.noiseModel.Isotropic.Sigma(3, 1.0)
+        gtsam.noiseModel.mEstimator.Huber.Create(huber_k),
+        gtsam.noiseModel.Isotropic.Sigma(3, stereo_sigma)
     )
 
     window_frames = list(range(start_frame, end_frame + 1))
@@ -221,9 +232,21 @@ def build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_windo
     }
 
 
-def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150):
-    """Executes Local Bundle Adjustment optimization over a sliding frame window."""
-    bundle_res = build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_window, prior_sigma=1e-6)
+def solve_bundle_window(db, start_frame, end_frame, max_tracks_per_window=150, prior_sigma=1e-6,
+                       stereo_sigma=1.0, huber_k=2.0):
+    """Executes Local Bundle Adjustment optimization over a sliding frame window.
+
+    Args:
+        db: TrackingDB object
+        start_frame: starting frame index
+        end_frame: ending frame index
+        max_tracks_per_window: max landmarks to optimize per window
+        prior_sigma: anchor pose prior noise scale
+        stereo_sigma: measurement noise sigma (pixels)
+        huber_k: Huber threshold (pixels)
+    """
+    bundle_res = build_and_solve_bundle_core(db, start_frame, end_frame, max_tracks_per_window,
+                                            prior_sigma=prior_sigma, stereo_sigma=stereo_sigma, huber_k=huber_k)
     optimized_points_local = []
     for track_id in bundle_res["optimized_landmark_ids"]:
         point_key = symbol("q", track_id)

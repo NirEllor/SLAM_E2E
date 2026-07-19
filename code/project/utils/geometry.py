@@ -68,6 +68,12 @@ def get_akaze_features(img):
     return akaze.detectAndCompute(img, None)
 
 
+def get_sift_features(img):
+    """Extracts keypoints and SIFT descriptors from an image."""
+    sift = cv2.SIFT_create()
+    return sift.detectAndCompute(img, None)
+
+
 def camera_center(R, t):
     """Calculates 3D world position of a camera center from extrinsics: C = -R^T * t."""
     return (-R.T @ t).flatten()
@@ -355,18 +361,37 @@ def estimate_next_pose_with_rejection(prev_data, curr_data, R_global, t_global, 
     return R_candidate, t_candidate, inliers, outliers
 
 
-def run_single_pair(idx=0, display=False, plot_3d=True):
-    """Executes feature detection, matching, epipolar filtering, and triangulation for a single frame."""
+def run_single_pair(idx=0, display=False, plot_3d=True, detector_type='akaze'):
+    """Executes feature detection, matching, epipolar filtering, and triangulation for a single frame.
+
+    Args:
+        idx: frame index
+        display: whether to print status
+        plot_3d: whether to plot 3D points (default True)
+        detector_type: 'akaze' (default), 'orb', or 'sift'
+    """
     if display:
-        print(f"\n========== Processing Frame {idx} Pipeline ==========")
+        print(f"\n========== Processing Frame {idx} Pipeline (detector: {detector_type}) ==========")
 
     img1, img2 = read_images(idx)
-    kp1, des1 = get_akaze_features(img1)
-    kp2, des2 = get_akaze_features(img2)
+
+    # Select detector based on type
+    if detector_type == 'orb':
+        kp1, des1 = get_orb_features(img1)
+        kp2, des2 = get_orb_features(img2)
+        matcher_norm = cv2.NORM_HAMMING
+    elif detector_type == 'sift':
+        kp1, des1 = get_sift_features(img1)
+        kp2, des2 = get_sift_features(img2)
+        matcher_norm = cv2.NORM_L2
+    else:  # 'akaze' or default
+        kp1, des1 = get_akaze_features(img1)
+        kp2, des2 = get_akaze_features(img2)
+        matcher_norm = cv2.NORM_HAMMING
 
     assert len(kp1) >= 500 and len(kp2) >= 500, f"Insufficient feature count in frame {idx}!"
 
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    bf = cv2.BFMatcher(matcher_norm, crossCheck=False)
     matches = bf.match(des1, des2)
 
     inliers, outliers = split_matches_by_rectified_pattern(kp1, kp2, matches, threshold=2)

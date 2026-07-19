@@ -17,14 +17,16 @@ from gtsam.utils import plot as gtsam_plot
 from .geometry import read_images, camera_center, crop_around_point, read_ground_truth_poses
 
 
-def plot_stereo_side_by_side(img_l, img_r, title="Stereo Pair"):
+def plot_stereo_side_by_side(img_l, img_r, title="Stereo Pair", graph_id=None, func_name=None):
     """Displays left and right stereo images side-by-side."""
-    plt.figure(figsize=(15, 7))
+    fig = plt.figure(figsize=(15, 7))
+    if graph_id and func_name:
+        fig.suptitle(f"Graph {graph_id}: {title}\n{func_name}, visualization.py", fontsize=12, fontweight='bold')
     plt.subplot(1, 2, 1)
     plt.imshow(img_l, cmap='gray')
     plt.title(f"{title} - Left")
     plt.axis('off')
-    
+
     plt.subplot(1, 2, 2)
     plt.imshow(img_r, cmap='gray')
     plt.title(f"{title} - Right")
@@ -55,7 +57,7 @@ def plot_deviation_histogram(deviations):
     plt.hist(deviations, bins=50)
     plt.xlabel("Deviation from rectified stereo pattern (pixels)")
     plt.ylabel("Number of matches")
-    plt.title("Histogram of deviations from rectified stereo pattern")
+    plt.title("Graph 2.1: Histogram of deviations from rectified stereo pattern\nplot_deviation_histogram, visualization.py")
     plt.tight_layout()
 
 
@@ -85,7 +87,7 @@ def draw_inliers_outliers(img1, kp1, img2, kp2, inliers, outliers):
         cv2.circle(img1_color, (int(pt1[0]), int(pt1[1])), 3, (255, 165, 0), -1)
         cv2.circle(img2_color, (int(pt2[0]), int(pt2[1])), 3, (255, 165, 0), -1)
 
-    plot_stereo_side_by_side(img1_color, img2_color, title="Inliers (orange) vs Outliers (cyan)")
+    plot_stereo_side_by_side(img1_color, img2_color, title="Inliers (orange) vs Outliers (cyan)", graph_id="2.2", func_name="draw_inliers_outliers")
 
 
 def plot_3d_points(points_3d, title="3D Point Cloud"):
@@ -93,7 +95,7 @@ def plot_3d_points(points_3d, title="3D Point Cloud"):
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(points_3d[:, 0], points_3d[:, 1], points_3d[:, 2], s=2)
-    ax.set_title(title)
+    ax.set_title(f"{title}\nplot_3d_points, visualization.py")
     ax.set_xlabel("X [m]")
     ax.set_ylabel("Y [m]")
     ax.set_zlabel("Z [m]")
@@ -121,7 +123,7 @@ def plot_four_cameras(R, t, baseline=0.54):
     plt.plot([c_left_0[0], c_right_0[0]], [c_left_0[1], c_right_0[1]], 'b--', alpha=0.5)
     plt.plot([c_left_1[0], c_right_1[0]], [c_left_1[1], c_right_1[1]], 'r--', alpha=0.5)
 
-    plt.title("Relative Positions of Four Cameras (Bird's-Eye View)")
+    plt.title("Graph 3.3: Relative Positions of Four Cameras (Bird's-Eye View)\nplot_four_cameras, visualization.py")
     plt.xlabel("X (Width / Lateral movement [m])")
     plt.ylabel("Z (Depth / Forward movement [m])")
     plt.grid(True, linestyle=':', alpha=0.6)
@@ -129,7 +131,7 @@ def plot_four_cameras(R, t, baseline=0.54):
     plt.axis('equal')
 
 
-def draw_match_canvas(img0_gray, kp0, img1_gray, kp1, matches_green, matches_red, title):
+def draw_match_canvas(img0_gray, kp0, img1_gray, kp1, matches_green, matches_red, title, source_func_name=None):
     """Generic helper to visualize matches across two images (green=inliers, red=outliers)."""
     img0 = cv2.cvtColor(img0_gray, cv2.COLOR_GRAY2RGB)
     img1 = cv2.cvtColor(img1_gray, cv2.COLOR_GRAY2RGB)
@@ -153,13 +155,16 @@ def draw_match_canvas(img0_gray, kp0, img1_gray, kp1, matches_green, matches_red
 
     plt.figure(figsize=(16, 8))
     plt.imshow(canvas)
-    plt.title(title)
+    if source_func_name:
+        plt.title(f"{title}\n{source_func_name}, visualization.py")
+    else:
+        plt.title(title)
     plt.axis("off")
 
 
 def draw_temporal_supporters(img_left0, kp_left0, img_left1, kp_left1, supporters, non_supporters, title="Supporters vs Non-supporters"):
     """Plots temporal tracking matches with green lines for supporters and red for outliers."""
-    draw_match_canvas(img_left0, kp_left0, img_left1, kp_left1, supporters, non_supporters, title + " | green=supporters, red=outliers")
+    draw_match_canvas(img_left0, kp_left0, img_left1, kp_left1, supporters, non_supporters, title + " | green=supporters, red=outliers", source_func_name="draw_temporal_supporters")
 
 
 def draw_ransac_results(frame0_data, frame1_data, inliers, outliers):
@@ -167,7 +172,7 @@ def draw_ransac_results(frame0_data, frame1_data, inliers, outliers):
     draw_match_canvas(
         frame0_data['img_left'], frame0_data['kp_left'],
         frame1_data['img_left'], frame1_data['kp_left'],
-        inliers, outliers, "3.5: RANSAC Inliers (green) vs Outliers (red)"
+        inliers, outliers, "Graph 3.5a: RANSAC Inliers (green) vs Outliers (red)", source_func_name="draw_ransac_results"
     )
 
 
@@ -187,7 +192,7 @@ def plot_transformed_clouds(frame0_data, frame1_data, R, t):
 
     plt.xlabel("X [m]")
     plt.ylabel("Z [m]")
-    plt.title("3.5: Point Clouds Alignment")
+    plt.title("Graph 3.5b: Point Clouds Alignment\nplot_transformed_clouds, visualization.py")
     plt.legend()
     plt.axis('equal')
     plt.grid(True)
@@ -201,7 +206,7 @@ def plot_trajectory(est_positions, gt_positions):
     plt.plot(gt_positions[:, 0], gt_positions[:, 2], label='Ground truth', linewidth=2)
     plt.xlabel("X [m]")
     plt.ylabel("Z [m]")
-    plt.title("3.6: Camera Trajectory (Top View)")
+    plt.title("Graph 3.6: Camera Trajectory (Top View)\nplot_trajectory, visualization.py")
     plt.legend()
     plt.axis('equal')
     plt.grid(True)
@@ -215,7 +220,7 @@ def plot_track_observations(db, track_id, crop_size=20):
     if num_rows == 1:
         axes = np.array([axes])
 
-    fig.suptitle(f"Track #{track_id}, length={len(frames)}", fontsize=14)
+    fig.suptitle(f"Graph 4.3: Track #{track_id}, length={len(frames)}\nplot_track_observations, visualization.py", fontsize=14)
 
     for row, frame_id in enumerate(frames):
         obs = db.observation(frame_id, track_id)
@@ -240,7 +245,7 @@ def plot_connectivity(connectivity):
     plt.figure(figsize=(12, 5))
     plt.plot(connectivity, linewidth=1)
     plt.axhline(np.mean(connectivity), color="green", linestyle="--", label=f"Mean={np.mean(connectivity):.1f}")
-    plt.title("Connectivity")
+    plt.title("Graph 4.4: Connectivity\nplot_connectivity, visualization.py")
     plt.xlabel("Frame")
     plt.ylabel("Outgoing Tracks")
     plt.legend()
@@ -254,7 +259,7 @@ def plot_inlier_percentage(inlier_percentages):
     plt.plot(inlier_percentages, linewidth=1)
     mean_val = np.mean(inlier_percentages)
     plt.axhline(mean_val, color="green", linestyle="--", label=f"Mean={mean_val:.2f}%")
-    plt.title("Inlier Percentage Per Frame")
+    plt.title("Graph 4.5: Inlier Percentage Per Frame\nplot_inlier_percentage, visualization.py")
     plt.xlabel("Frame")
     plt.ylabel("Inlier Percentage (%)")
     plt.grid(True)
@@ -269,7 +274,7 @@ def plot_track_length_histogram(db, min_length=2):
     bins = range(min(track_lengths), max(track_lengths) + 2)
     plt.hist(track_lengths, bins=bins, edgecolor="black")
     plt.yscale("log")
-    plt.title("Track Length Histogram")
+    plt.title("Graph 4.6: Track Length Histogram\nplot_track_length_histogram, visualization.py")
     plt.xlabel("Track Length")
     plt.ylabel("Track Count")
     plt.grid(True, axis="y")
@@ -284,7 +289,7 @@ def plot_track_reprojection_error_analysis(frames, left_errors, right_errors):
     plt.plot(distances_from_reference, left_errors, label='Left Channel Residuals', color='#2F4F4F', linewidth=2)
     plt.plot(distances_from_reference, right_errors, label='Right Channel Residuals', color='#FFA500', linewidth=2)
 
-    plt.title("4.7: PnP - projection error vs track length")
+    plt.title("Graph 4.7: PnP - projection error vs track length\nplot_track_reprojection_error_analysis, visualization.py")
     plt.xlabel("distance from reference (frames)")
     plt.ylabel("projection error (pixels)")
     plt.grid(True, linestyle=':', alpha=0.6)
@@ -309,6 +314,7 @@ def draw_projection_validation_frames(frame_id, obs, proj_init, proj_final):
         cv2.circle(img, pt_after, radius=6, color=(0, 255, 0), thickness=-1)
 
     cv2.putText(img_left, "Blue: Meas | Red: Before | Green: After", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+    cv2.putText(img_left, "Graph 5.3e: draw_projection_validation_frames, visualization.py", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
     output_dir = "./outputs"
     os.makedirs(output_dir, exist_ok=True)
     cv2.imwrite(os.path.join(output_dir, f"task_5_3_worst_frame_{frame_id}_left.png"), img_left)
@@ -320,7 +326,7 @@ def reprojection_error_graph(frame_indices, left_reprojection_errors, right_repr
     plt.figure(figsize=(10, 5))
     plt.plot(frame_indices, left_reprojection_errors, label="Left camera reprojection error", color="#1f77b4")
     plt.plot(frame_indices, right_reprojection_errors, label="Right camera reprojection error", color="#ff7f0e")
-    plt.title("Right camera reprojection error")
+    plt.title("Graph 5.1a: Right camera reprojection error\nreprojection_error_graph, visualization.py")
     plt.xlabel("Frame index")
     plt.ylabel("Reprojection error (L2 norm) - pixels")
     plt.grid(True)
@@ -333,7 +339,7 @@ def factor_error_graph(frame_indices, factor_errors, output_dir):
     """Plots GTSAM factor cost graph evolution across frame indices."""
     plt.figure(figsize=(10, 5))
     plt.plot(frame_indices, factor_errors, color="red", marker='s')
-    plt.title("Factor error graph")
+    plt.title("Graph 5.1b: Factor error graph\nfactor_error_graph, visualization.py")
     plt.xlabel("Frame index")
     plt.ylabel("Factor Error")
     plt.grid(True)
@@ -359,13 +365,14 @@ def bundle1_3D(window_frames, cam_positions, result, axis_length, output_dir):
         ax3d.plot([cx, cx - axis_length * R[2, 1]], [cy, cy - axis_length * R[0, 1]], [cz, cz + axis_length * R[1, 1]], color='g', linewidth=1.5)
         ax3d.plot([cx, cx + axis_length * R[2, 2]], [cy, cy + axis_length * R[0, 2]], [cz, cz - axis_length * R[1, 2]], color='b', linewidth=1.5)
 
-    ax3d.set_title("Local Window Bundle Adjustment: 3D Optimized Trajectory\n", fontsize=11, fontweight='bold')
+    ax3d.set_title("Graph 5.3a: Local Window Bundle Adjustment: 3D Optimized Trajectory\nbundle1_3D, visualization.py", fontsize=11, fontweight='bold')
     ax3d.set_xlabel("Z (Forward) [m]")
     ax3d.set_ylabel("X (Right) [m]")
     ax3d.set_zlabel("-Y (Up) [m]")
     ax3d.set_xlim([0, 6])
     ax3d.set_ylim([-2, 2])
     ax3d.set_zlim([-2, 2])
+    ax3d.set_box_aspect([3, 2, 2])
     ax3d.view_init(elev=14, azim=-72)
     plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_3D.png"), dpi=200, bbox_inches='tight')
     plt.close()
@@ -375,7 +382,7 @@ def marginal_covariances(window_frames, graph, result, output_dir):
     """Plots GTSAM 3D trajectory with marginal covariance ellipsoids on camera poses."""
     fig_cov = plt.figure(figsize=(8, 6))
     ax_cov = fig_cov.add_subplot(111, projection='3d')
-    ax_cov.set_title("Plot Trajectory\nGTSAM Factor Graph State with Marginal Covariances\n", fontsize=11, fontweight='bold')
+    ax_cov.set_title("Graph 5.3b: GTSAM Factor Graph State with Marginal Covariances\nmarginal_covariances, visualization.py", fontsize=11, fontweight='bold')
 
     try:
         marginals = gtsam.Marginals(graph, result)
@@ -390,6 +397,7 @@ def marginal_covariances(window_frames, graph, result, output_dir):
     ax_cov.set_xlabel("X axis")
     ax_cov.set_ylabel("Y axis")
     ax_cov.set_zlabel("Z axis")
+    ax_cov.set_box_aspect([1, 1, 1])
     ax_cov.view_init(elev=20, azim=-35)
     plt.savefig(os.path.join(output_dir, "task_5_3_marginal_covariances.png"), dpi=200, bbox_inches='tight')
     plt.close()
@@ -408,7 +416,7 @@ def bundle1_2D_full(window_frames, initial_cam_positions, cam_positions, lm_filt
     for i, f_id in enumerate(window_frames):
         ax2d_full.annotate(str(f_id), (cam_positions[i, 0], cam_positions[i, 2]), textcoords="offset points", xytext=(4, 4), fontsize=7, color='darkred')
 
-    ax2d_full.set_title("Top-Down View (X-Z) of Bundle Window\nAll Cameras & Landmarks", fontsize=11, fontweight='bold')
+    ax2d_full.set_title("Graph 5.3c: Top-Down View (X-Z) of Bundle Window - All Cameras & Landmarks\nbundle1_2D_full, visualization.py", fontsize=11, fontweight='bold')
     ax2d_full.set_xlabel("X [m]")
     ax2d_full.set_ylabel("Z (Forward) [m]")
     ax2d_full.set_xlim([-50, 50])
@@ -424,7 +432,7 @@ def bundle1_2D_zoomed(initial_cam_positions, cam_positions, output_dir):
     fig2d_zoom, ax2d_zoom = plt.subplots(figsize=(6, 7))
     ax2d_zoom.plot(initial_cam_positions[:, 0], initial_cam_positions[:, 2], 'b-o', alpha=0.5, markersize=4, label='Initial (PnP)')
     ax2d_zoom.plot(cam_positions[:, 0], cam_positions[:, 2], 'r-o', markersize=4, label='Optimized (BA)')
-    ax2d_zoom.set_title("Local Window Bundle Adjustment: 2D Bird's-Eye View Trajectory\n(Trajectory zoomed)")
+    ax2d_zoom.set_title("Graph 5.3d: 2D Bird's-Eye View Trajectory (zoomed)\nbundle1_2D_zoomed, visualization.py")
     ax2d_zoom.set_xlabel("X Coordinate (East) [m]")
     ax2d_zoom.set_ylabel("Z Coordinate (North) [m]")
     ax2d_zoom.set_xlim([-2, 2])
@@ -451,7 +459,7 @@ def plot_q5_4_results(keyframes, global_keyframe_poses, all_points_global, outpu
     plt.plot(estimated_positions[:, 0], estimated_positions[:, 2], "bo-", markersize=3, label="Optimized keyframes")
     plt.plot(gt_positions[:, 0], gt_positions[:, 2], "r--", linewidth=2, label="Ground truth keyframes")
 
-    plt.title("5.4: Optimized Keyframe Trajectory vs Ground Truth")
+    plt.title("Graph 5.4a: Optimized Keyframe Trajectory vs Ground Truth\nplot_q5_4_results, visualization.py")
     plt.xlabel("X")
     plt.ylabel("Z")
     plt.axis("equal")
@@ -482,7 +490,7 @@ def plot_keyframe_localization_error(keyframes, global_keyframe_poses, output_di
 
     plt.figure(figsize=(12, 5))
     plt.plot(valid_keyframes, errors, marker="o", linewidth=1)
-    plt.title("5.4: Keyframe Localization Error")
+    plt.title("Graph 5.4b: Keyframe Localization Error\nplot_keyframe_localization_error, visualization.py")
     plt.xlabel("Frame")
     plt.ylabel("Localization Error [m]")
     plt.grid(True)
@@ -506,7 +514,7 @@ def plot_pose_graph_trajectory(values, title, output_path):
 
     plt.figure(figsize=(10, 8))
     plt.plot(positions[:, 0], positions[:, 2], "bo-", markersize=3, linewidth=1.5)
-    plt.title(title)
+    plt.title(f"{title}\nplot_pose_graph_trajectory, visualization.py")
     plt.xlabel("X")
     plt.ylabel("Z")
     plt.axis("equal")
@@ -560,10 +568,11 @@ def plot_pose_graph_with_covariances(values, marginals, title, output_path, cova
         except Exception as e:
             print(f"[Warning] Could not plot covariance for frame {frame_id}: {e}")
 
-    ax.set_title(title)
+    ax.set_title(f"{title}\nplot_pose_graph_with_covariances, visualization.py")
     ax.set_xlabel("X axis")
     ax.set_ylabel("Y axis")
     ax.set_zlabel("Z axis")
+    ax.set_box_aspect([1, 1, 1])
     ax.grid(True)
     ax.legend()
     ax.view_init(elev=20, azim=-60)
@@ -611,7 +620,7 @@ def plot_pose_graph_2d_ellipses(result, marginals, output_path, step=1, sigma_sc
         except Exception:
             pass
 
-    ax.set_title("Q6.2: keyframes with marginal covariances", fontsize=11)
+    ax.set_title("Graph 6.2d: keyframes with marginal covariances\nplot_pose_graph_2d_ellipses, visualization.py", fontsize=11)
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Z — forward (m)")
     ax.grid(True, linestyle=":", alpha=0.5)
@@ -648,7 +657,7 @@ def plot_loop_candidates(keyframes, candidates, optimized_values, output_dir="."
                 plt.scatter(x_i, z_i, color='magenta', s=15, zorder=3)
                 plt.plot([x_n, x_i], [z_n, z_i], color='red', linestyle='--', alpha=0.6, linewidth=1.0)
 
-    plt.title("Q7.1: Detected Loop Closure Candidates on ESTIMATED Trajectory", fontsize=12, fontweight='bold')
+    plt.title("Graph 7.1: Detected Loop Closure Candidates on ESTIMATED Trajectory\nplot_loop_candidates, visualization.py", fontsize=12, fontweight='bold')
     plt.xlabel("X (Width) [m]")
     plt.ylabel("Z (Depth / Forward) [m]")
     plt.axis("equal")
@@ -689,7 +698,7 @@ def plot_pose_graph_vs_ground_truth(no_loop_values, loop_values, output_dir=".")
     if len(gt_pts) == len(pos_no):
         plt.plot(gt_pts[:, 0], gt_pts[:, 2], "--", linewidth=2, label="ground truth")
 
-    plt.title("Q7.5: Pose Graph vs Ground Truth")
+    plt.title("Graph 7.5a: Pose Graph vs Ground Truth\nplot_pose_graph_vs_ground_truth, visualization.py")
     plt.xlabel("X [m]")
     plt.ylabel("Z [m]")
     plt.axis("equal")
@@ -727,7 +736,7 @@ def plot_absolute_location_error(no_loop_values, loop_values, output_dir="."):
     plt.figure(figsize=(12, 5))
     plt.plot(ids_no[:len(gt_no)], np.linalg.norm(pos_no[:len(gt_no)] - gt_no, axis=1), marker="o", linewidth=1, label="without loop closures")
     plt.plot(ids_lc[:len(gt_lc)], np.linalg.norm(pos_lc[:len(gt_lc)] - gt_lc, axis=1), marker="o", linewidth=1, label="with loop closures")
-    plt.title("Q7.5: Absolute Location Error")
+    plt.title("Graph 7.5b: Absolute Location Error\nplot_absolute_location_error, visualization.py")
     plt.xlabel("Keyframe")
     plt.ylabel("Position error [m]")
     plt.grid(True)
@@ -765,7 +774,7 @@ def plot_location_uncertainty_size(no_loop_values, no_loop_marginals, loop_value
     plt.figure(figsize=(12, 5))
     plt.plot(ids_no, unc_no, marker="o", linewidth=1, label="without loop closures")
     plt.plot(ids_lc, unc_lc, marker="o", linewidth=1, label="with loop closures")
-    plt.title("Q7.5: Location Uncertainty Size")
+    plt.title("Graph 7.5c: Location Uncertainty Size\nplot_location_uncertainty_size, visualization.py")
     plt.xlabel("Keyframe")
     plt.ylabel(r"$\sqrt{\det(\Sigma_{xz})}$ [m²]")
     plt.grid(True)
@@ -786,7 +795,7 @@ def plot_matches_per_frame(matches_per_frame, output_dir="."):
     plt.ylabel("Number of Matches")
     plt.grid(True)
     plt.legend()
-    plt.title("Task 4.8: Matches per Frame")
+    plt.title("Graph 4.8: Matches per Frame\nplot_matches_per_frame, visualization.py")
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "task_4_8_matches_per_frame.png"), dpi=200)
     plt.close()
@@ -801,7 +810,7 @@ def plot_absolute_location_error_components(frame_ids, err_x, err_y, err_z, err_
     plt.plot(frame_ids, err_norm, linewidth=1.5, label="Total error norm (m)", alpha=0.9)
     plt.xlabel("Frame")
     plt.ylabel("Error (m)")
-    plt.title(title)
+    plt.title(f"{title}\nplot_absolute_location_error_components, visualization.py")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -815,7 +824,7 @@ def plot_absolute_angle_error(frame_ids, err_angle, title, output_path):
     plt.plot(frame_ids, err_angle, linewidth=1, label="Angle error (deg)")
     plt.xlabel("Frame")
     plt.ylabel("Angle Error (degrees)")
-    plt.title(title)
+    plt.title(f"{title}\nplot_absolute_angle_error, visualization.py")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -830,7 +839,7 @@ def plot_bundle_optimization_error(window_start_ids, mean_initial_errors, mean_f
     plt.plot(window_start_ids, mean_final_errors, marker="o", linewidth=1.5, label="Optimized Error", color="blue")
     plt.xlabel("Bundle Starting at Frame idx")
     plt.ylabel("Mean Factor Error")
-    plt.title("Task 5.4: Bundle Optimization Error")
+    plt.title("Graph 5.4c: Bundle Optimization Error\nplot_bundle_optimization_error, visualization.py")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -845,7 +854,7 @@ def plot_bundle_projection_error(window_start_ids, median_initial_errors, median
     plt.plot(window_start_ids, median_final_errors, marker="o", linewidth=1.5, label="Optimized Error", color="blue")
     plt.xlabel("Bundle Starting at Frame idx")
     plt.ylabel("Median Projection Error (pixels)")
-    plt.title("Task 5.4: Bundle Projection Error")
+    plt.title("Graph 5.4d: Bundle Projection Error\nplot_bundle_projection_error, visualization.py")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -859,7 +868,7 @@ def plot_projection_error_vs_distance(distances, median_errors, title, output_pa
     plt.plot(distances, median_errors, marker="o", linewidth=1.5)
     plt.xlabel("Distance from Reference Frame")
     plt.ylabel("Median Projection Error (pixels)")
-    plt.title(title)
+    plt.title(f"{title}\nplot_projection_error_vs_distance, visualization.py")
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
@@ -873,7 +882,7 @@ def plot_relative_error_comparison(edge_ids, bundle_errors, pnp_errors, ylabel, 
     plt.plot(edge_ids, pnp_errors, marker="s", linewidth=1, label="PnP", alpha=0.8)
     plt.xlabel("Edge Index")
     plt.ylabel(ylabel)
-    plt.title(title)
+    plt.title(f"{title}\nplot_relative_error_comparison, visualization.py")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -881,7 +890,7 @@ def plot_relative_error_comparison(edge_ids, bundle_errors, pnp_errors, ylabel, 
     plt.close()
 
 
-def plot_full_trajectory_comparison(pnp_positions, bundle_ids, bundle_positions, pg_ids, pg_positions, gt_positions, output_dir="."):
+def plot_full_trajectory_comparison(pnp_positions, bundle_ids, bundle_positions, pg_ids, pg_positions, gt_positions, output_dir=".", title=None):
     """Plots overlaid trajectories (PnP, Bundle, Pose-Graph+LC, GT) bird's-eye X-Z view."""
     plt.figure(figsize=(12, 8))
     plt.plot(gt_positions[:, 0], gt_positions[:, 2], "g--", linewidth=2, label="Ground Truth", alpha=0.7)
@@ -892,7 +901,9 @@ def plot_full_trajectory_comparison(pnp_positions, bundle_ids, bundle_positions,
         plt.scatter(pg_positions[:, 0], pg_positions[:, 2], marker="^", s=30, label="Pose-Graph+LC Keyframes", alpha=0.6)
     plt.xlabel("X (m)")
     plt.ylabel("Z (m)")
-    plt.title("Task Summary: Full Trajectory Comparison (Bird's Eye)")
+    if title is None:
+        title = "Task Summary: Full Trajectory Comparison (Bird's Eye)"
+    plt.title(f"{title}\nplot_full_trajectory_comparison, visualization.py")
     plt.grid(True)
     plt.legend()
     plt.axis("equal")
@@ -923,7 +934,7 @@ def plot_kitti_sequence_error(segment_results, ylabel, title, output_path):
     if has_data:
         plt.xlabel("Segment Index")
         plt.ylabel(ylabel)
-        plt.title(title)
+        plt.title(f"{title}\nplot_kitti_sequence_error, visualization.py")
         plt.grid(True)
         plt.legend()
         plt.tight_layout()
@@ -942,7 +953,7 @@ def plot_loop_closure_match_stats(loop_measurements, output_dir="."):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
     ax1.bar(x, match_counts, width, label="Good Matches")
     ax1.set_ylabel("Match Count")
-    ax1.set_title("Task 7.5: Loop Closure Match Statistics")
+    ax1.set_title("Graph 7.5h: Loop Closure Match Statistics\nplot_loop_closure_match_stats, visualization.py")
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, rotation=45, ha="right")
     ax1.grid(True, alpha=0.3)
@@ -987,7 +998,7 @@ def plot_angle_uncertainty_size(no_loop_values, no_loop_marginals, loop_values, 
     plt.figure(figsize=(12, 5))
     plt.plot(ids_no, unc_no, marker="o", linewidth=1, label="without loop closures")
     plt.plot(ids_lc, unc_lc, marker="o", linewidth=1, label="with loop closures")
-    plt.title("Task 7.5: Angle Uncertainty Size")
+    plt.title("Graph 7.5i: Angle Uncertainty Size\nplot_angle_uncertainty_size, visualization.py")
     plt.xlabel("Keyframe")
     plt.ylabel(r"$(|\Sigma_{rot}|)^{1/3}$ [degrees]")
     plt.grid(True)

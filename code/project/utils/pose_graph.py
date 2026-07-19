@@ -123,7 +123,7 @@ def run_prior_sensitivity_sweep(db, c0_idx, ck_idx, output_dir):
 
         fig = plt.figure(figsize=(9, 7))
         ax = fig.add_subplot(111, projection='3d')
-        ax.set_title(f"6.1 – Bundle {c0_idx}→{ck_idx}  |  prior noise: {label}\nFrame locations with marginal covariances", fontsize=10, fontweight='bold')
+        ax.set_title(f"Graph 6.1c: Bundle {c0_idx}→{ck_idx} – prior noise: {label}\nFrame locations with marginal covariances\nrun_prior_sensitivity_sweep, pose_graph.py", fontsize=10, fontweight='bold')
 
         for f_id in wf_s:
             key = symbol('c', f_id)
@@ -138,6 +138,7 @@ def run_prior_sensitivity_sweep(db, c0_idx, ck_idx, output_dir):
         if sigma != 1.0:
             ax.set_xlim(-10.0, 10.0)
             ax.set_ylim(-10.0, 10.0)
+        ax.set_box_aspect([1, 1, 1])
         ax.view_init(elev=20, azim=-60)
         plt.tight_layout()
         path = os.path.join(output_dir, fname)
@@ -147,7 +148,7 @@ def run_prior_sensitivity_sweep(db, c0_idx, ck_idx, output_dir):
 
 
 def compute_relative_pose_and_covariance(db, start_idx, end_idx):
-    """Calculates marginal covariance and relative pose between keyframes using Schur Complements."""
+    """Calculates covariance of relative pose T_0k = T_0^{-1} T_k using joint marginal covariance and between() Jacobians."""
     from .bundle_adjustment import solve_bundle_window
 
     br = solve_bundle_window(db, start_idx, end_idx)
@@ -155,16 +156,25 @@ def compute_relative_pose_and_covariance(db, start_idx, end_idx):
     marginals = gtsam.Marginals(graph, result)
 
     key_0, key_k = symbol('c', start_idx), symbol('c', end_idx)
+    pose_0 = result.atPose3(key_0)
+    pose_k = result.atPose3(key_k)
+
     joint_cov = marginals.jointMarginalCovariance(gtsam.KeyVector([key_0, key_k])).fullMatrix()
+    Sigma_00 = joint_cov[0:6, 0:6]
+    Sigma_0k = joint_cov[0:6, 6:12]
+    Sigma_k0 = joint_cov[6:12, 0:6]
+    Sigma_kk = joint_cov[6:12, 6:12]
 
-    Sigma_00, Sigma_0k = joint_cov[0:6, 0:6], joint_cov[0:6, 6:12]
-    Sigma_k0, Sigma_kk = joint_cov[6:12, 0:6], joint_cov[6:12, 6:12]
+    H_0 = np.zeros((6, 6), dtype=np.float64, order='F')
+    H_k = np.zeros((6, 6), dtype=np.float64, order='F')
+    relative_pose = pose_0.between(pose_k, H_0, H_k)
 
-    Sigma_conditional_global = Sigma_kk - Sigma_k0 @ np.linalg.inv(Sigma_00) @ Sigma_0k
-    relative_pose = br["relative_pose"]
-    Ad_k = relative_pose.AdjointMap()
+    Sigma_rel = (H_0 @ Sigma_00 @ H_0.T +
+                 H_k @ Sigma_kk @ H_k.T +
+                 H_0 @ Sigma_0k @ H_k.T +
+                 H_k @ Sigma_k0 @ H_0.T)
 
-    return relative_pose, Ad_k @ Sigma_conditional_global @ Ad_k.T
+    return relative_pose, Sigma_rel
 
 
 def compute_all_relative_constraints(db, keyframes):

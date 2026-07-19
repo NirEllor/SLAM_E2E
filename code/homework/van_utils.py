@@ -251,6 +251,7 @@ def plot_3d_points(points_3d, title="3D Point Cloud"):
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
+    ax.set_box_aspect([1, 1, 1])
     plt.tight_layout()
 
 
@@ -1352,6 +1353,7 @@ def bundle1_3D(window_frames, cam_positions, result, axis_length, output_dir):
     ax3d.set_xlim([0, 6])
     ax3d.set_ylim([-2, 2])
     ax3d.set_zlim([-2, 2])
+    ax3d.set_box_aspect([3, 2, 2])
     ax3d.view_init(elev=14, azim=-72)
     plt.savefig(os.path.join(output_dir, "task_5_3_bundle1_3D.png"), dpi=200, bbox_inches='tight')
     plt.close()
@@ -1378,6 +1380,7 @@ def marginal_covariances(window_frames, graph, result, output_dir):
     ax_cov.set_xlabel("X axis")
     ax_cov.set_ylabel("Y axis")
     ax_cov.set_zlabel("Z axis")
+    ax_cov.set_box_aspect([1, 1, 1])
     ax_cov.view_init(elev=20, azim=-35)
     plt.savefig(os.path.join(output_dir, "task_5_3_marginal_covariances.png"), dpi=200, bbox_inches='tight')
     plt.close()
@@ -1599,6 +1602,7 @@ def run_and_plot_prior_sensitivity(db, c0_idx, ck_idx, output_dir):
         if sigma != 1.0:
             ax.set_xlim(-10.0, 10.0)
             ax.set_ylim(-10.0, 10.0)
+        ax.set_box_aspect([1, 1, 1])
         ax.view_init(elev=20, azim=-60)
         plt.tight_layout()
         path = os.path.join(output_dir, fname)
@@ -1612,23 +1616,32 @@ def run_and_plot_prior_sensitivity(db, c0_idx, ck_idx, output_dir):
 ############################################################################
 def compute_relative_pose_and_covariance(db, start_idx, end_idx):
     """
-    Calculates marginal covariance and relative pose between keyframes using Schur Complements.
+    Calculates covariance of relative pose T_0k = T_0^{-1} T_k using joint marginal covariance and between() Jacobians.
     """
     br = solve_bundle_window(db, start_idx, end_idx)
     graph, result = br["graph"], br["result"]
     marginals = gtsam.Marginals(graph, result)
 
     key_0, key_k = symbol('c', start_idx), symbol('c', end_idx)
+    pose_0 = result.atPose3(key_0)
+    pose_k = result.atPose3(key_k)
+
     joint_cov = marginals.jointMarginalCovariance(gtsam.KeyVector([key_0, key_k])).fullMatrix()
+    Sigma_00 = joint_cov[0:6, 0:6]
+    Sigma_0k = joint_cov[0:6, 6:12]
+    Sigma_k0 = joint_cov[6:12, 0:6]
+    Sigma_kk = joint_cov[6:12, 6:12]
 
-    Sigma_00, Sigma_0k = joint_cov[0:6, 0:6], joint_cov[0:6, 6:12]
-    Sigma_k0, Sigma_kk = joint_cov[6:12, 0:6], joint_cov[6:12, 6:12]
+    H_0 = np.zeros((6, 6), dtype=np.float64, order='F')
+    H_k = np.zeros((6, 6), dtype=np.float64, order='F')
+    relative_pose = pose_0.between(pose_k, H_0, H_k)
 
-    Sigma_conditional_global = Sigma_kk - Sigma_k0 @ np.linalg.inv(Sigma_00) @ Sigma_0k
-    relative_pose = br["relative_pose"]
-    Ad_k = relative_pose.AdjointMap()
+    Sigma_rel = (H_0 @ Sigma_00 @ H_0.T +
+                 H_k @ Sigma_kk @ H_k.T +
+                 H_0 @ Sigma_0k @ H_k.T +
+                 H_k @ Sigma_k0 @ H_0.T)
 
-    return relative_pose, Ad_k @ Sigma_conditional_global @ Ad_k.T
+    return relative_pose, Sigma_rel
 
 
 def compute_all_relative_constraints(db, keyframes):

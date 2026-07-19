@@ -124,8 +124,16 @@ def compute_track_lengths(db, min_length=2):
     return [len(db.frames(t_id)) for t_id in db.track_to_frames if len(db.frames(t_id)) >= min_length]
 
 
-def build_data(num_frames):
-    """Constructs the long-term TrackingDB object by matching features sequentially across frames."""
+def build_data(num_frames, detector_type='akaze', pnp_threshold=2, pnp_iterations=50, pnp_max_no_improvement=12):
+    """Constructs the long-term TrackingDB object by matching features sequentially across frames.
+
+    Args:
+        num_frames: number of frames to process
+        detector_type: 'akaze' (default), 'orb', or 'sift'
+        pnp_threshold: reprojection error threshold (pixels) for RANSAC inlier cutoff
+        pnp_iterations: max RANSAC iterations
+        pnp_max_no_improvement: early stopping after N iterations with no improvement
+    """
     # TrackingDB is in the shared code/ directory (works for both homework/ and project/)
     import sys
     from pathlib import Path
@@ -141,12 +149,18 @@ def build_data(num_frames):
     R_global, t_global = np.eye(3), np.zeros((3, 1))
     camera_poses = [(R_global.copy(), t_global.copy())]
 
-    prev_data = run_single_pair(idx=0, display=False, plot_3d=False)
-    bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+    # Select matcher norm based on detector type
+    if detector_type == 'sift':
+        matcher_norm = cv2.NORM_L2
+    else:  # 'akaze' or 'orb'
+        matcher_norm = cv2.NORM_HAMMING
+
+    prev_data = run_single_pair(idx=0, display=False, plot_3d=False, detector_type=detector_type)
+    bf_matcher = cv2.BFMatcher(matcher_norm)
 
     for idx in range(1, num_frames):
-        print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1}")
-        curr_data = run_single_pair(idx=idx, display=False, plot_3d=False)
+        print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1} (detector: {detector_type})")
+        curr_data = run_single_pair(idx=idx, display=False, plot_3d=False, detector_type=detector_type)
 
         knn_matches = bf_matcher.knnMatch(prev_data["des_left"], curr_data["des_left"], k=2)
         temporal_matches = [m for m, n in knn_matches if m.distance < 0.7 * n.distance]
@@ -159,9 +173,9 @@ def build_data(num_frames):
 
             best_inliers, best_outliers, best_R, best_t = [], [], None, None
             k_matrix, _, _ = read_cameras()
-            no_improvement, max_no_improvement = 0, 12
+            no_improvement, max_no_improvement = 0, pnp_max_no_improvement
 
-            for _ in range(50):
+            for _ in range(pnp_iterations):
                 sample = random.sample(correspondences, 4)
                 obj_pts = np.array([c["X"] for c in sample], dtype=np.float32)
                 img_pts = np.array([c["obs_left1"] for c in sample], dtype=np.float32)
@@ -172,7 +186,7 @@ def build_data(num_frames):
                     continue
 
                 R_candidate, _ = cv2.Rodrigues(rvec)
-                inliers, outliers = evaluate_supporters(correspondences, prev_data, curr_data, R_candidate, tvec, threshold=2)
+                inliers, outliers = evaluate_supporters(correspondences, prev_data, curr_data, R_candidate, tvec, threshold=pnp_threshold)
 
                 if len(inliers) > len(best_inliers):
                     best_inliers, best_outliers, best_R, best_t = inliers, outliers, R_candidate, tvec
@@ -212,8 +226,18 @@ def build_data(num_frames):
     return db
 
 
-def load_or_build_db(force_rebuild=False, num_frames=None):
-    """Loads pre-built TrackingDB pickle file or executes construction pipeline."""
+def load_or_build_db(force_rebuild=False, num_frames=None, detector_type='akaze', pnp_threshold=2,
+                    pnp_iterations=50, pnp_max_no_improvement=12):
+    """Loads pre-built TrackingDB pickle file or executes construction pipeline.
+
+    Args:
+        force_rebuild: whether to force rebuild from scratch
+        num_frames: number of frames to process (default: all)
+        detector_type: 'akaze' (default), 'orb', or 'sift'
+        pnp_threshold: reprojection error threshold (pixels) for RANSAC
+        pnp_iterations: max RANSAC iterations
+        pnp_max_no_improvement: early stopping after N iterations
+    """
     if num_frames is None:
         num_frames = get_num_frames()
 
@@ -228,7 +252,8 @@ def load_or_build_db(force_rebuild=False, num_frames=None):
             force_rebuild = True
 
     print("Building TrackingDB from scratch...")
-    db = build_data(num_frames=num_frames)
+    db = build_data(num_frames=num_frames, detector_type=detector_type, pnp_threshold=pnp_threshold,
+                   pnp_iterations=pnp_iterations, pnp_max_no_improvement=pnp_max_no_improvement)
     with open(DB_PKL_PATH, "wb") as f:
         pickle.dump(db, f)
     return db

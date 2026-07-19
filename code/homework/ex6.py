@@ -25,7 +25,7 @@ def q6_1(db, output_dir="./outputs"):
     relative_pose, Sigma_rel = lib.compute_relative_pose_and_covariance(db, c0_idx, ck_idx)
     print(f"\nRelative Pose between keyframes c{c0_idx} and c{ck_idx}:")
     print(relative_pose)
-    print(f"\nConditional covariance P(c{ck_idx} | c{c0_idx}):")
+    print(f"\nRelative pose covariance (T_0{ck_idx} = T_0^(-1) T_{ck_idx}):")
     import numpy as np
     print(np.array2string(Sigma_rel, precision=8, suppress_small=True))
 
