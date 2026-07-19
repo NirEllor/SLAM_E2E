@@ -23,8 +23,11 @@ def main():
     print("COMPARISON 1: LOOP-CLOSURE GATING STRICTNESS")
     print("="*80)
 
-    # Load baseline DB (no rebuild, just reuse existing)
-    db = build_variant_db(detector_type='akaze', cache_tag='baseline')
+    # Use full sequence
+    print(f"Running on all available frames...")
+
+    # Build a dedicated full-sequence DB for this experiment
+    db = build_variant_db(detector_type='akaze', cache_tag='lc_test_full', num_frames=None)
 
     # Define variants: (label, mahalanobis_threshold, inlier_ratio_threshold)
     variants = [
@@ -54,7 +57,8 @@ def main():
 
     # Generate comparison plots
     print("\n--- Generating Comparison Plots ---")
-    output_dir = PROJECT_ROOT / 'code' / 'project' / 'outputs'
+    output_dir = PROJECT_ROOT / 'code' / 'project' / 'experiments' / 'outputs'
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         plot_multi_variant_trajectory(results_dict,

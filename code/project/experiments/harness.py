@@ -16,7 +16,7 @@ sys.path.insert(0, str(PROJECT_ROOT / 'code' / 'project'))
 sys.path.insert(0, str(PROJECT_ROOT / 'code'))
 
 from utils.geometry import get_num_frames
-from utils.tracking import load_or_build_db
+from utils.tracking import load_or_build_db, build_data
 from utils.bundle_adjustment import choose_keyframes, solve_bundle_window
 from utils.pose_graph import (
     compute_relative_pose_and_covariance, compute_all_relative_constraints,
@@ -54,31 +54,39 @@ def build_variant_db(detector_type='akaze', pnp_threshold=2, pnp_iterations=50,
     if cache_tag is None:
         cache_tag = f"{detector_type}_t{pnp_threshold}_i{pnp_iterations}"
 
-    # Build variant pickle path — distinct from baseline code/tracking_db.pkl
-    variant_pkl = PROJECT_ROOT / 'code' / f'tracking_db_{cache_tag}.pkl'
-
     print(f"\n{'='*80}")
     print(f"Variant DB: {cache_tag}")
     print(f"  Detector: {detector_type}, PnP threshold: {pnp_threshold}px, "
           f"iterations: {pnp_iterations}, max_no_improve: {pnp_max_no_improvement}")
-    print(f"  Cache: {variant_pkl}")
     print(f"{'='*80}")
+
+    # Special case: baseline uses the shared code/tracking_db.pkl (never modified by experiments)
+    if cache_tag == 'baseline' and detector_type == 'akaze' and pnp_threshold == 2 and pnp_iterations == 50:
+        print(f"Loading BASELINE DB from shared code/tracking_db.pkl (NEVER modified by experiments)")
+        db = load_or_build_db(force_rebuild=False, num_frames=num_frames)
+        print(f"✓ Loaded {db.frame_num()} frames from shared baseline")
+        return db
+
+    # For all variant DBs, use a separate pickle file to avoid modifying the shared baseline
+    variant_pkl = PROJECT_ROOT / 'code' / f'tracking_db_{cache_tag}.pkl'
+    print(f"  Cache path: {variant_pkl}")
 
     # Check if variant pickle exists and is usable
     if variant_pkl.exists():
-        print(f"Loading variant DB from pickle: {variant_pkl}")
+        print(f"Loading variant DB from cache")
         try:
             with open(variant_pkl, 'rb') as f:
                 db = pickle.load(f)
-            print(f"✓ Loaded {db.frame_num()} frames from cache")
+            print(f"✓ Loaded {db.frame_num()} frames from variant cache")
             return db
         except Exception as e:
             print(f"  [Note] Pickle incompatible ({e}), rebuilding...")
 
     # Build new DB with variant parameters
-    print(f"Building variant DB from scratch...")
-    db = load_or_build_db(
-        force_rebuild=True,  # Always rebuild to apply variant params
+    # NOTE: We call build_data directly (not load_or_build_db) to ensure we save to variant_pkl,
+    # not the shared code/tracking_db.pkl
+    print(f"Building variant DB from scratch (calling build_data directly)...")
+    db = build_data(
         num_frames=num_frames,
         detector_type=detector_type,
         pnp_threshold=pnp_threshold,
@@ -86,10 +94,12 @@ def build_variant_db(detector_type='akaze', pnp_threshold=2, pnp_iterations=50,
         pnp_max_no_improvement=pnp_max_no_improvement
     )
 
-    # Save to variant pickle
+    # Save to variant pickle (NOT the shared baseline DB_PKL_PATH)
     print(f"Saving variant DB to {variant_pkl}...")
     with open(variant_pkl, 'wb') as f:
         pickle.dump(db, f)
+    print(f"✓ Variant DB saved")
+    print(f"  PROTECTION: Baseline code/tracking_db.pkl remains untouched")
 
     return db
 
@@ -114,7 +124,7 @@ def run_pipeline_variant(db, keyframe_kwargs=None, bundle_kwargs=None, loop_kwar
         'absolute_errors_no_lc', 'absolute_errors_lc', 'kitti_errors', 'loop_count', 'runtime_sec'
     """
     if output_dir is None:
-        output_dir = PROJECT_ROOT / 'code' / 'project' / 'outputs'
+        output_dir = PROJECT_ROOT / 'code' / 'project' / 'experiments' / 'outputs'
     os.makedirs(output_dir, exist_ok=True)
 
     if keyframe_kwargs is None:
@@ -151,7 +161,7 @@ def run_pipeline_variant(db, keyframe_kwargs=None, bundle_kwargs=None, loop_kwar
     cleaned_poses, cleaned_covs = clean_pose_graph_edges(relative_poses, relative_covs)
     graph_no_lc, initial_no_lc = build_and_initialize_pose_graph(cleaned_poses, cleaned_covs)
     pg_result_no_lc, marginals_no_lc = optimize_pose_graph(graph_no_lc, initial_no_lc)
-    results['pg_no_lc'] = {'result': pg_result_no_lc, 'marginals': marginals_no_lc, 'graph': graph_no_lc}
+    # Note: Don't store graph/marginals (GTSAM objects, not picklable); only store result for trajectory extraction
 
     # Absolute errors (pose graph without LC)
     abs_errors_no_lc = compute_pose_graph_absolute_error(pg_result_no_lc)
@@ -160,7 +170,6 @@ def run_pipeline_variant(db, keyframe_kwargs=None, bundle_kwargs=None, loop_kwar
 
     # Stage 4: Loop closure (optional)
     pg_result_with_lc = pg_result_no_lc
-    marginals_with_lc = marginals_no_lc
     loop_count = 0
 
     if run_loop_closure:
@@ -180,18 +189,33 @@ def run_pipeline_variant(db, keyframe_kwargs=None, bundle_kwargs=None, loop_kwar
                     cleaned_poses, cleaned_covs, loop_measurements, output_dir=None
                 )
                 pg_result_with_lc = pg_results['loop_result']
-                marginals_with_lc = pg_results['loop_marginals']
                 print(f"Loop closures: {loop_count} verified")
         except Exception as e:
             print(f"Loop closure error: {e}")
 
-    results['pg_with_lc'] = {'result': pg_result_with_lc, 'marginals': marginals_with_lc}
     results['loop_count'] = loop_count
 
     # Absolute errors (pose graph with LC)
     abs_errors_lc = compute_pose_graph_absolute_error(pg_result_with_lc)
     results['absolute_errors_lc'] = abs_errors_lc
     print(f"PG (with LC) mean location error: {np.mean(abs_errors_lc['err_norm']):.4f} m")
+
+    # Extract trajectory (keyframe poses) as numpy arrays for pickling
+    # GTSAM objects (Values, Marginals) can't be pickled, so extract positions now
+    try:
+        import gtsam
+        positions = []
+        for key in pg_result_with_lc.keys():
+            sym = gtsam.Symbol(key)
+            if sym.chr() == ord('c'):  # 'c' = camera pose
+                pose = pg_result_with_lc.atPose3(key)
+                from utils.bundle_adjustment import pose_translation_np
+                pos = pose_translation_np(pose)
+                positions.append(pos)
+        results['trajectory_positions'] = np.array(positions) if positions else np.array([])
+    except Exception as e:
+        print(f"Warning: Could not extract trajectory: {e}")
+        results['trajectory_positions'] = np.array([])
 
     # KITTI segment errors (optional, skip for now)
     results['kitti_errors'] = {}

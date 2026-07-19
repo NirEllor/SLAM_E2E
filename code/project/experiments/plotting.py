@@ -38,20 +38,23 @@ def plot_multi_variant_trajectory(variants_dict, output_path=None, title="Multi-
     colors = ['blue', 'orange', 'red', 'purple', 'brown']
     for (label, data), color in zip(sorted(variants_dict.items()), colors):
         try:
-            result = data.get('pg_with_lc', {}).get('result') or data.get('pg_no_lc', {}).get('result')
-            if result is None:
-                continue
+            # Try to use pre-extracted trajectory positions (from harness)
+            positions = data.get('trajectory_positions')
 
-            positions = []
-            for key in result.keys():
-                sym = gtsam.Symbol(key)
-                if sym.chr() == ord('c'):
-                    pose = result.atPose3(key)
-                    pos = pose_translation_np(pose)
-                    positions.append(pos)
+            # Fallback: extract from GTSAM result if available
+            if positions is None or len(positions) == 0:
+                result = data.get('pg_with_lc', {}).get('result') or data.get('pg_no_lc', {}).get('result')
+                if result is not None:
+                    positions = []
+                    for key in result.keys():
+                        sym = gtsam.Symbol(key)
+                        if sym.chr() == ord('c'):
+                            pose = result.atPose3(key)
+                            pos = pose_translation_np(pose)
+                            positions.append(pos)
+                    positions = np.array(positions) if positions else None
 
-            if positions:
-                positions = np.array(positions)
+            if positions is not None and len(positions) > 0:
                 ax.plot(positions[:, 0], positions[:, 2], '-', color=color, linewidth=2, label=label, alpha=0.8)
         except Exception as e:
             print(f"Error plotting {label}: {e}")

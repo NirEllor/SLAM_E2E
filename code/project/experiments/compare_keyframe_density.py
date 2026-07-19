@@ -24,7 +24,7 @@ def main():
     print("="*80)
 
     # Load baseline DB (no rebuild, just reuse existing)
-    db = build_variant_db(detector_type='akaze', cache_tag='baseline')
+    db = build_variant_db(detector_type='akaze', cache_tag='baseline', num_frames=None)
 
     # Define variants: (label, distance_threshold)
     variants = [
@@ -46,7 +46,7 @@ def main():
             'max_gap': 20
         }
 
-        results = run_pipeline_variant(db, keyframe_kwargs=keyframe_kwargs, run_loop_closure=True)
+        results = run_pipeline_variant(db, keyframe_kwargs=keyframe_kwargs, run_loop_closure=False)
         results_dict[label] = results
 
         # Save results
@@ -54,7 +54,8 @@ def main():
 
     # Generate comparison plots
     print("\n--- Generating Comparison Plots ---")
-    output_dir = PROJECT_ROOT / 'code' / 'project' / 'outputs'
+    output_dir = PROJECT_ROOT / 'code' / 'project' / 'experiments' / 'outputs'
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         plot_multi_variant_trajectory(results_dict,
@@ -71,7 +72,7 @@ def main():
         print(f"Absolute error plot failed: {e}")
 
     try:
-        plot_multi_variant_scalar_comparison(results_dict, ['keyframes', 'loop_count', 'runtime_sec'],
+        plot_multi_variant_scalar_comparison(results_dict, ['keyframes', 'runtime_sec'],
                                             output_path=output_dir / 'cmp_kf_density_scalars.png',
                                             title='Keyframe Density: Scalar Metrics')
     except Exception as e:

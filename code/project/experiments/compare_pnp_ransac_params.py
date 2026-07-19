@@ -23,7 +23,7 @@ def main():
     print("COMPARISON 4: PnP-RANSAC PARAMETERS")
     print("="*80)
     print("WARNING: This experiment requires rebuilding TrackingDB for each variant.")
-    print("         Expect longer runtime than cheap experiments.")
+    print("         Running on full sequence.")
     print("="*80)
 
     # Define variants: (label, cache_tag, pnp_threshold, pnp_iterations)
@@ -38,17 +38,17 @@ def main():
     for label, cache_tag, pnp_threshold, pnp_iterations in variants:
         print(f"\n--- Variant: {label} ---")
         print(f"  PnP threshold: {pnp_threshold} px, iterations: {pnp_iterations}")
-        print(f"  Building variant DB (this may take a few minutes)...")
+        print(f"  Building variant DB (this may take several minutes)...")
 
         # Build variant DB with custom PnP-RANSAC params
         db = build_variant_db(detector_type='akaze', pnp_threshold=pnp_threshold,
                              pnp_iterations=pnp_iterations, pnp_max_no_improvement=12,
-                             cache_tag=cache_tag)
+                             num_frames=None, cache_tag=cache_tag)
 
         print(f"  Running pipeline...")
 
-        # Run pipeline (use default bundle/LC params, only vary PnP)
-        results = run_pipeline_variant(db, run_loop_closure=True)
+        # Run pipeline (disable loop closure to avoid 4+ hour bottleneck)
+        results = run_pipeline_variant(db, run_loop_closure=False)
         results_dict[label] = results
 
         # Save results
@@ -56,7 +56,8 @@ def main():
 
     # Generate comparison plots
     print("\n--- Generating Comparison Plots ---")
-    output_dir = PROJECT_ROOT / 'code' / 'project' / 'outputs'
+    output_dir = PROJECT_ROOT / 'code' / 'project' / 'experiments' / 'outputs'
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         plot_multi_variant_trajectory(results_dict,
@@ -73,7 +74,7 @@ def main():
         print(f"Absolute error plot failed: {e}")
 
     try:
-        plot_multi_variant_scalar_comparison(results_dict, ['keyframes', 'loop_count', 'runtime_sec'],
+        plot_multi_variant_scalar_comparison(results_dict, ['keyframes', 'runtime_sec'],
                                             output_path=output_dir / 'cmp_pnp_ransac_scalars.png',
                                             title='PnP-RANSAC Parameters: Scalar Metrics')
     except Exception as e:

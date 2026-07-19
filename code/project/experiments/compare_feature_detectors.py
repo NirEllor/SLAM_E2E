@@ -25,7 +25,7 @@ def main():
     print("="*80)
     print("WARNING: This is the most expensive experiment.")
     print("         Building TrackingDB for SIFT and ORB (AKAZE reuses baseline).")
-    print("         Expect 10-15 minutes total runtime for full sequence.")
+    print("         Running on full sequence.")
     print("="*80)
 
     # Define variants: (label, detector_type, cache_tag)
@@ -50,12 +50,12 @@ def main():
         # Build or reuse variant DB
         db = build_variant_db(detector_type=detector_type, pnp_threshold=2,
                              pnp_iterations=50, pnp_max_no_improvement=12,
-                             cache_tag=cache_tag)
+                             num_frames=None, cache_tag=cache_tag)
 
         print(f"  Running pipeline...")
 
-        # Run pipeline (use default params for everything else)
-        results = run_pipeline_variant(db, run_loop_closure=True)
+        # Run pipeline (disable loop closure to avoid bottleneck)
+        results = run_pipeline_variant(db, run_loop_closure=False)
         results_dict[label] = results
 
         # Save results
@@ -63,7 +63,8 @@ def main():
 
     # Generate comparison plots
     print("\n--- Generating Comparison Plots ---")
-    output_dir = PROJECT_ROOT / 'code' / 'project' / 'outputs'
+    output_dir = PROJECT_ROOT / 'code' / 'project' / 'experiments' / 'outputs'
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         plot_multi_variant_trajectory(results_dict,
@@ -80,7 +81,7 @@ def main():
         print(f"Absolute error plot failed: {e}")
 
     try:
-        plot_multi_variant_scalar_comparison(results_dict, ['keyframes', 'loop_count', 'runtime_sec'],
+        plot_multi_variant_scalar_comparison(results_dict, ['keyframes', 'runtime_sec'],
                                             output_path=output_dir / 'cmp_feature_detectors_scalars.png',
                                             title='Feature Detectors: Scalar Metrics')
     except Exception as e:

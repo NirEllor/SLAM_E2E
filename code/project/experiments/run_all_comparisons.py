@@ -92,7 +92,7 @@ def main():
         print("ALL EXPERIMENTS COMPLETED SUCCESSFULLY ✓")
         print("="*80)
         print("\nComparison plots saved to:")
-        print(f"  {PROJECT_ROOT}/code/project/outputs/cmp_*.png")
+        print(f"  {PROJECT_ROOT}/code/project/experiments/outputs/cmp_*.png")
         print("\nVariant results pickled to:")
         print(f"  {PROJECT_ROOT}/code/project/experiment_results/<topic>/<variant>.pkl")
         return True

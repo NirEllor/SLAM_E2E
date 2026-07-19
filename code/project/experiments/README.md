@@ -23,27 +23,48 @@ This package contains scripts and infrastructure for running systematic comparis
 ### 1. Loop-Closure Gating Strictness (`compare_loop_closure_gating.py`)
 - **Parameters**: `mahalanobis_threshold`, `inlier_ratio_threshold`
 - **Variants**: strict (300, 0.8), baseline (1000, 0.6), loose (3000, 0.4)
-- **Cost**: Cheap (no DB rebuild; reuses baseline DB)
+- **Loop Closure**: ✅ **ENABLED** (this experiment specifically tests loop-closure gating)
+- **Cost**: Expensive (~30-60 min for full sequence due to RANSAC consensus verification on loop candidates)
+- **DB**: Dedicated 400-frame+ DB (`tracking_db_lc_test_full.pkl`)
 
 ### 2. Keyframe Density (`compare_keyframe_density.py`)
 - **Parameters**: `distance_threshold` (others fixed at defaults)
 - **Variants**: dense (1.25 m), baseline (2.5 m), sparse (5.0 m)
-- **Cost**: Cheap (no DB rebuild)
+- **Loop Closure**: ❌ **DISABLED** (loop closure is orthogonal to keyframe selection; enabling it would confound results by varying loop counts per variant)
+- **Cost**: Cheap (~2-3 min total)
+- **DB**: Baseline reuse
 
 ### 3. Bundle Adjustment Noise Model (`compare_bundle_noise_model.py`)
 - **Parameters**: `prior_sigma`, `stereo_sigma`, `huber_k`
-- **Variants**: Sweeps of prior_sigma and stereo_sigma
-- **Cost**: Cheap (no DB rebuild)
+- **Variants**: Sweeps of prior_sigma ∈ {1.0, 0.05, 1e-6} and stereo_sigma ∈ {0.5, 1.0, 2.0}
+- **Loop Closure**: ❌ **DISABLED** (loop closure is independent of bundle adjustment noise modeling)
+- **Cost**: Cheap (~3-5 min total)
+- **DB**: Baseline reuse
 
 ### 4. PnP-RANSAC Parameters (`compare_pnp_ransac_params.py`)
 - **Parameters**: `pnp_threshold` (pixels), `pnp_iterations`
 - **Variants**: strict (1px, 100 iter), baseline (2px, 50), loose (4px, 25)
-- **Cost**: Expensive (requires DB rebuild per variant)
+- **Loop Closure**: ❌ **DISABLED** (loop closure is independent of PnP feature tracking quality; disabling keeps comparison fair across variants)
+- **Cost**: Expensive (~10-15 min total, requires DB rebuild per variant)
+- **DB**: Separate DBs per variant (`tracking_db_strict_pnp.pkl`, etc.)
 
 ### 5. Feature Detectors (`compare_feature_detectors.py`)
 - **Parameters**: `detector_type` (akaze/orb/sift)
 - **Variants**: AKAZE (baseline), ORB (700 features), SIFT
-- **Cost**: Expensive (requires full DB rebuild per variant)
+- **Loop Closure**: ❌ **DISABLED** (loop closure is independent of feature detection; disabling ensures fair comparison)
+- **Cost**: Expensive (~15-25 min total, 2 full DB rebuilds)
+- **DB**: Baseline for AKAZE, separate DBs for ORB and SIFT
+
+## Why Loop Closure is Disabled for Most Experiments
+
+**Loop closure is a POST-PROCESSING stage** that runs after pose graph optimization. It is:
+- ✅ Enabled for the **loop-closure-gating experiment** (topic 1), which specifically tests loop-closure detection and gating parameters
+- ❌ Disabled for experiments 2-5 because:
+  1. **Fair comparison**: Each experiment tests ONE component (keyframes, bundle noise, RANSAC, detector). Loop closure would confound results by introducing variable numbers of detected loops per variant
+  2. **Orthogonal stages**: Loop closure doesn't depend on keyframe selection, bundle noise modeling, RANSAC parameters, or feature detectors
+  3. **Isolate effects**: Disabling loop closure lets us measure the pure effect of the parameter being tested
+
+**Example**: If keyframe density affected loop closure detection, it would be impossible to tell if improved trajectories came from better keyframes or more loop closures. Disabling LC ensures we measure only keyframe effects.
 
 ## Running Experiments
 
@@ -60,7 +81,7 @@ wsl bash -lc "source gtsam_venv/bin/activate && cd code/project && python experi
 
 ### Results and Plots
 - Variant results pickled to: `code/project/experiment_results/<topic>/<variant>.pkl`
-- Comparison plots saved to: `code/project/outputs/cmp_<topic>_*.png`
+- Comparison plots saved to: `code/project/experiments/outputs/cmp_<topic>_*.png`
 
 ## Modified Core Files
 
@@ -80,8 +101,33 @@ The following core pipeline files were updated with backward-compatible signatur
 
 All changes are backward-compatible: existing code (e.g., `main.py`, `exN.py`) continues to work without modification.
 
+## Runtime Estimates (Full Sequence)
+
+| Experiment | Loop Closure | Time per Variant | Total (all variants) |
+|-----------|--------------|------------------|----------------------|
+| **1. Loop-Closure Gating** | ✅ Yes | 30-60 min | 90-180 min |
+| **2. Keyframe Density** | ❌ No | 3-5 min | 10-15 min |
+| **3. Bundle Noise Model** | ❌ No | 2-3 min | 10-15 min |
+| **4. PnP-RANSAC** | ❌ No | 3-5 min | 10-15 min |
+| **5. Feature Detectors** | ❌ No | 5-10 min | 15-30 min |
+| **Total (all 5 topics)** | Mixed | - | **2-4 hours** |
+
+**Notes:**
+- Cheap experiments (2-3) complete in ~30 min total
+- Expensive experiments (4-5) require DB rebuild per variant but skip loop closure (15-30 min total)
+- Loop-closure-gating (1) is slowest due to RANSAC consensus verification on all candidate loop pairs
+- You can run cheap experiments first while loop-closure-gating runs in the background
+- Variant DBs are cached (e.g., `tracking_db_strict_pnp.pkl`), so re-running experiments is instant if results already exist
+
+## Database Protection
+
+**Shared baseline DB is NEVER modified** (`code/tracking_db.pkl` used by both project and homework):
+- Cheap experiments load baseline without modification
+- Expensive experiments build and cache separate variant pickles
+- See `DB_PROTECTION.md` for details
+
 ## Notes
 
-- Full-sequence experiments (~2760 frames) take ~2-5 minutes per variant depending on loop closure detection complexity
-- Cheap experiments (topics 1-3) can run sequentially; expensive experiments (topics 4-5) can be parallelized across machines if needed
 - KITTI segment error computation is optional (currently skipped in harness) but can be added once utility functions are properly wired
+- All new parameters in core pipeline files are backward-compatible with defaults matching original behavior
+- Trajectory and error data are extracted as numpy arrays before pickling to ensure results can be re-plotted later
