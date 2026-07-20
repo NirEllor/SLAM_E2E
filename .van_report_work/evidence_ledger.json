@@ -1,0 +1,519 @@
+{
+  "metadata": {
+    "repo": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex",
+    "generated": "2026-07-20T20:02:06.132164",
+    "phase": "report_generation"
+  },
+  "entries": [
+    {
+      "id": "DB-LOAD",
+      "claim": "Loaded cached TrackingDB from /mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/tracking_db.pkl",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/tracking_db.pkl",
+        "size_bytes": 409306945
+      },
+      "timestamp": "2026-07-20T20:02:38.740540"
+    },
+    {
+      "id": "STAGE-1-triangulation",
+      "claim": "Triangulation",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/project/utils/geometry.py",
+        "line_start": 208,
+        "line_end": 220,
+        "function": "triangulate_points_opencv"
+      },
+      "timestamp": "2026-07-20T20:02:38.740656"
+    },
+    {
+      "id": "STAGE-2-ransac",
+      "claim": "RanSaC",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/project/utils/tracking.py",
+        "line_start": 127,
+        "line_end": 220,
+        "function": "build_data (inline RANSAC)"
+      },
+      "timestamp": "2026-07-20T20:02:38.740666"
+    },
+    {
+      "id": "STAGE-3-pnp-trajectory",
+      "claim": "PnP trajectory calculation",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/project/utils/tracking.py",
+        "line_start": 127,
+        "line_end": 220,
+        "function": "build_data"
+      },
+      "timestamp": "2026-07-20T20:02:38.740672"
+    },
+    {
+      "id": "STAGE-4-database-definition",
+      "claim": "DataBase definition",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/tracking_database.py",
+        "line_start": 22,
+        "line_end": 150,
+        "function": "class TrackingDB, class Observation"
+      },
+      "timestamp": "2026-07-20T20:02:38.740676"
+    },
+    {
+      "id": "STAGE-5-add-frame-database",
+      "claim": "Adding a frame to the database",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/tracking_database.py",
+        "line_start": 83,
+        "line_end": 128,
+        "function": "TrackingDB.update_tracks, add_observation"
+      },
+      "timestamp": "2026-07-20T20:02:38.740682"
+    },
+    {
+      "id": "STAGE-6-single-bundle",
+      "claim": "Single Bundle creation",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/project/utils/bundle_adjustment.py",
+        "line_start": 127,
+        "line_end": 220,
+        "function": "solve_bundle_window"
+      },
+      "timestamp": "2026-07-20T20:02:38.740686"
+    },
+    {
+      "id": "STAGE-7-relative-transform",
+      "claim": "The relative transformation (including covariance) extraction from the bundle result",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/project/utils/pose_graph.py",
+        "line_start": 150,
+        "line_end": 210,
+        "function": "compute_relative_pose_and_covariance"
+      },
+      "timestamp": "2026-07-20T20:02:38.740690"
+    },
+    {
+      "id": "STAGE-8-posegraph",
+      "claim": "PoseGraph building",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/project/utils/pose_graph.py",
+        "line_start": 77,
+        "line_end": 140,
+        "function": "build_and_initialize_pose_graph, optimize_pose_graph"
+      },
+      "timestamp": "2026-07-20T20:02:38.740694"
+    },
+    {
+      "id": "STAGE-9-loop-closure",
+      "claim": "Loop closure detection and factor creation",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "code/project/utils/loop_closure.py",
+        "line_start": 42,
+        "line_end": 250,
+        "function": "detect_loop_closure_candidates, estimate_verified_loop_relative_poses, add_loop_closures_and_optimize"
+      },
+      "timestamp": "2026-07-20T20:02:38.740700"
+    },
+    {
+      "id": "EXP-LOOP_CLOSURE_GATING-cmp_lc_gating_trajectory.png",
+      "claim": "Loop-closure gating cmp_lc_gating_trajectory.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_lc_gating_trajectory.png",
+        "size_bytes": 108175
+      },
+      "timestamp": "2026-07-20T20:02:38.750724"
+    },
+    {
+      "id": "EXP-LOOP_CLOSURE_GATING-cmp_lc_gating_absolute_error.png",
+      "claim": "Loop-closure gating cmp_lc_gating_absolute_error.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_lc_gating_absolute_error.png",
+        "size_bytes": 176392
+      },
+      "timestamp": "2026-07-20T20:02:38.759548"
+    },
+    {
+      "id": "EXP-LOOP_CLOSURE_GATING-cmp_lc_gating_scalars.png",
+      "claim": "Loop-closure gating cmp_lc_gating_scalars.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_lc_gating_scalars.png",
+        "size_bytes": 76290
+      },
+      "timestamp": "2026-07-20T20:02:38.770209"
+    },
+    {
+      "id": "EXP-KEYFRAME_DENSITY-cmp_kf_density_trajectory.png",
+      "claim": "Keyframe density cmp_kf_density_trajectory.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_kf_density_trajectory.png",
+        "size_bytes": 145202
+      },
+      "timestamp": "2026-07-20T20:02:38.777985"
+    },
+    {
+      "id": "EXP-KEYFRAME_DENSITY-cmp_kf_density_absolute_error.png",
+      "claim": "Keyframe density cmp_kf_density_absolute_error.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_kf_density_absolute_error.png",
+        "size_bytes": 260140
+      },
+      "timestamp": "2026-07-20T20:02:38.784919"
+    },
+    {
+      "id": "EXP-KEYFRAME_DENSITY-cmp_kf_density_scalars.png",
+      "claim": "Keyframe density cmp_kf_density_scalars.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_kf_density_scalars.png",
+        "size_bytes": 54768
+      },
+      "timestamp": "2026-07-20T20:02:38.792960"
+    },
+    {
+      "id": "EXP-BUNDLE_NOISE_MODEL-cmp_bundle_noise_trajectory.png",
+      "claim": "Bundle noise model cmp_bundle_noise_trajectory.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_bundle_noise_trajectory.png",
+        "size_bytes": 121756
+      },
+      "timestamp": "2026-07-20T20:02:38.799715"
+    },
+    {
+      "id": "EXP-BUNDLE_NOISE_MODEL-cmp_bundle_noise_absolute_error.png",
+      "claim": "Bundle noise model cmp_bundle_noise_absolute_error.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_bundle_noise_absolute_error.png",
+        "size_bytes": 199889
+      },
+      "timestamp": "2026-07-20T20:02:38.804013"
+    },
+    {
+      "id": "EXP-BUNDLE_NOISE_MODEL-cmp_bundle_noise_scalars.png",
+      "claim": "Bundle noise model cmp_bundle_noise_scalars.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_bundle_noise_scalars.png",
+        "size_bytes": 63781
+      },
+      "timestamp": "2026-07-20T20:02:38.807492"
+    },
+    {
+      "id": "EXP-PNP_RANSAC_PARAMS-cmp_pnp_ransac_trajectory.png",
+      "claim": "PnP-RANSAC parameters cmp_pnp_ransac_trajectory.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_pnp_ransac_trajectory.png",
+        "size_bytes": 145683
+      },
+      "timestamp": "2026-07-20T20:02:38.810332"
+    },
+    {
+      "id": "EXP-PNP_RANSAC_PARAMS-cmp_pnp_ransac_absolute_error.png",
+      "claim": "PnP-RANSAC parameters cmp_pnp_ransac_absolute_error.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_pnp_ransac_absolute_error.png",
+        "size_bytes": 265879
+      },
+      "timestamp": "2026-07-20T20:02:38.813640"
+    },
+    {
+      "id": "EXP-PNP_RANSAC_PARAMS-cmp_pnp_ransac_scalars.png",
+      "claim": "PnP-RANSAC parameters cmp_pnp_ransac_scalars.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_pnp_ransac_scalars.png",
+        "size_bytes": 56168
+      },
+      "timestamp": "2026-07-20T20:02:38.818979"
+    },
+    {
+      "id": "EXP-FEATURE_DETECTORS-cmp_feature_detectors_trajectory.png",
+      "claim": "Feature detectors cmp_feature_detectors_trajectory.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_feature_detectors_trajectory.png",
+        "size_bytes": 161523
+      },
+      "timestamp": "2026-07-20T20:02:38.823064"
+    },
+    {
+      "id": "EXP-FEATURE_DETECTORS-cmp_feature_detectors_absolute_error.png",
+      "claim": "Feature detectors cmp_feature_detectors_absolute_error.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_feature_detectors_absolute_error.png",
+        "size_bytes": 194661
+      },
+      "timestamp": "2026-07-20T20:02:38.826326"
+    },
+    {
+      "id": "EXP-FEATURE_DETECTORS-cmp_feature_detectors_scalars.png",
+      "claim": "Feature detectors cmp_feature_detectors_scalars.png",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_feature_detectors_scalars.png",
+        "size_bytes": 55844
+      },
+      "timestamp": "2026-07-20T20:02:38.829719"
+    },
+    {
+      "id": "STAT-TOTAL-TRACKS",
+      "claim": "Total number of tracks: 901081",
+      "status": "VERIFIED",
+      "evidence": {
+        "value": 901081,
+        "method": "db.track_num()",
+        "file": "tracking_database.py:68-70"
+      },
+      "timestamp": "2026-07-20T20:02:39.279196"
+    },
+    {
+      "id": "STAT-TOTAL-FRAMES",
+      "claim": "Total number of frames: 3300",
+      "status": "VERIFIED",
+      "evidence": {
+        "value": 3300,
+        "method": "db.frame_num()",
+        "file": "tracking_database.py:72-74"
+      },
+      "timestamp": "2026-07-20T20:02:39.279218"
+    },
+    {
+      "id": "STAT-MEAN-TRACK-LENGTH",
+      "claim": "Mean track length: 4.40",
+      "status": "VERIFIED",
+      "evidence": {
+        "value": 4.398180629710315,
+        "method": "compute_tracking_statistics",
+        "file": "utils/tracking.py:75-90"
+      },
+      "timestamp": "2026-07-20T20:02:39.279222"
+    },
+    {
+      "id": "STAT-MEAN-FRAME-LINKS",
+      "claim": "Mean frame links: 1200.94",
+      "status": "VERIFIED",
+      "evidence": {
+        "value": 1200.9445454545455,
+        "method": "compute_tracking_statistics",
+        "file": "utils/tracking.py:75-90"
+      },
+      "timestamp": "2026-07-20T20:02:39.279224"
+    },
+    {
+      "id": "STAT-MATCHES-PER-FRAME",
+      "claim": "Graph: matches per frame",
+      "status": "PENDING",
+      "evidence": {
+        "method": "plot_matches_per_frame",
+        "file": "utils/visualization.py:787",
+        "needs_savefig": true
+      },
+      "timestamp": "2026-07-20T20:02:39.279233"
+    },
+    {
+      "id": "STAT-INLIER-PERCENTAGE",
+      "claim": "Graph: inlier percentage per frame",
+      "status": "PENDING",
+      "evidence": {
+        "method": "plot_inlier_percentage",
+        "file": "utils/visualization.py:256",
+        "needs_savefig": true
+      },
+      "timestamp": "2026-07-20T20:02:39.279238"
+    },
+    {
+      "id": "GRAPH-CONNECTIVITY",
+      "claim": "Connectivity",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_4_4_connectivity.png",
+        "size_bytes": 175617,
+        "source_function": "visualization.py:243"
+      },
+      "timestamp": "2026-07-20T20:02:39.299913"
+    },
+    {
+      "id": "GRAPH-TRACK-LENGTH",
+      "claim": "Track length histogram",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_4_6_track_length_histogram.png",
+        "size_bytes": 49813,
+        "source_function": "visualization.py:270"
+      },
+      "timestamp": "2026-07-20T20:02:39.312438"
+    },
+    {
+      "id": "GRAPH-TRAJECTORY",
+      "claim": "Trajectory bird's-eye view",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_summary_full_trajectory_comparison.png",
+        "size_bytes": 316831,
+        "source_function": "visualization.py:893"
+      },
+      "timestamp": "2026-07-20T20:02:39.326391"
+    },
+    {
+      "id": "GRAPH-OPT-ERROR",
+      "claim": "Bundle optimization error",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_5_4_mean_factor_error.png",
+        "size_bytes": 267086,
+        "source_function": "visualization.py:835"
+      },
+      "timestamp": "2026-07-20T20:02:39.344648"
+    },
+    {
+      "id": "GRAPH-PROJ-ERROR",
+      "claim": "Bundle projection error",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_5_4_median_projection_error.png",
+        "size_bytes": 274321,
+        "source_function": "visualization.py:850"
+      },
+      "timestamp": "2026-07-20T20:02:39.359350"
+    },
+    {
+      "id": "GRAPH-TRACK-LINK-PNP",
+      "claim": "Track link error vs distance (PnP)",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_pa_pnp_projection_error_vs_distance.png",
+        "size_bytes": 135446,
+        "source_function": "visualization.py:865"
+      },
+      "timestamp": "2026-07-20T20:02:39.369863"
+    },
+    {
+      "id": "GRAPH-TRACK-LINK-BUNDLE",
+      "claim": "Track link error vs distance (Bundle)",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_5_4_projection_error_vs_distance.png",
+        "size_bytes": 121561,
+        "source_function": "visualization.py:865"
+      },
+      "timestamp": "2026-07-20T20:02:39.386188"
+    },
+    {
+      "id": "GRAPH-ABS-PNP",
+      "claim": "Absolute PnP error (X/Y/Z/norm/angle)",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_pa_absolute_angle_error_pnp.png",
+        "size_bytes": 122221,
+        "source_function": "visualization.py:804-832"
+      },
+      "timestamp": "2026-07-20T20:02:39.422124"
+    },
+    {
+      "id": "GRAPH-ABS-PG-NO-LC",
+      "claim": "Absolute Pose-Graph error (no LC)",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_7_5_absolute_angle_error_no_lc.png",
+        "size_bytes": 124651,
+        "source_function": "visualization.py:749-784"
+      },
+      "timestamp": "2026-07-20T20:02:39.453641"
+    },
+    {
+      "id": "GRAPH-ABS-PG-LC",
+      "claim": "Absolute Pose-Graph error (with LC)",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_7_5_absolute_angle_error_lc.png",
+        "size_bytes": 133282,
+        "source_function": "visualization.py:749-784"
+      },
+      "timestamp": "2026-07-20T20:02:39.470492"
+    },
+    {
+      "id": "GRAPH-REL-ERROR-KF",
+      "claim": "Relative error between keyframes",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_6_1_relative_angle_error.png",
+        "size_bytes": 223786,
+        "source_function": "visualization.py:878"
+      },
+      "timestamp": "2026-07-20T20:02:39.481910"
+    },
+    {
+      "id": "GRAPH-REL-ERROR-PNP-SUBSEG",
+      "claim": "Relative PnP error over sub-sections",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_pa_kitti_pnp_angle_error.png",
+        "size_bytes": 254838,
+        "source_function": "visualization.py:915"
+      },
+      "timestamp": "2026-07-20T20:02:39.491197"
+    },
+    {
+      "id": "GRAPH-REL-ERROR-BUNDLE-SUBSEG",
+      "claim": "Relative Bundle error over sub-sections",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_pa_kitti_bundle_angle_error.png",
+        "size_bytes": 165188,
+        "source_function": "visualization.py:915"
+      },
+      "timestamp": "2026-07-20T20:02:39.499359"
+    },
+    {
+      "id": "GRAPH-LC-MATCHES",
+      "claim": "Loop-closure match count",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_7_5_loop_closure_match_stats.png",
+        "size_bytes": 195087,
+        "source_function": "visualization.py:945"
+      },
+      "timestamp": "2026-07-20T20:02:39.509014"
+    },
+    {
+      "id": "GRAPH-INLIER-PERCENTAGE",
+      "claim": "Inlier percentage",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_4_5_inlier_percentage.png",
+        "size_bytes": 141356,
+        "source_function": "visualization.py:256"
+      },
+      "timestamp": "2026-07-20T20:02:39.521925"
+    },
+    {
+      "id": "GRAPH-UNCERTAINTY-SIZE",
+      "claim": "Uncertainty size (location and angle)",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/outputs/task_7_5_angle_uncertainty_size.png",
+        "size_bytes": 113169,
+        "source_function": "visualization.py:749-1008"
+      },
+      "timestamp": "2026-07-20T20:02:39.531921"
+    }
+  ]
+}

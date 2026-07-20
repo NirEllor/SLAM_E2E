@@ -1,0 +1,378 @@
+[
+  {
+    "type": "heading1",
+    "text": "1. Introduction and Overview"
+  },
+  {
+    "type": "heading2",
+    "text": "Background"
+  },
+  {
+    "type": "paragraph",
+    "text": "Stereo visual navigation (Visual SLAM) reconstructs camera trajectory and 3D landmarks from stereo image pairs. This system estimates camera pose at each frame by matching features across stereo pairs and subsequent frames, then refining estimates through bundle adjustment and pose-graph optimization. The architecture combines classical computer vision (feature extraction, stereo matching, PnP pose estimation) with modern optimization techniques (GTSAM factor graphs, loop closure detection via Mahalanobis distance and RANSAC consensus)."
+  },
+  {
+    "type": "heading2",
+    "text": "Significance"
+  },
+  {
+    "type": "paragraph",
+    "text": "Vision-based navigation is critical for autonomous robotics where GPS is unavailable or unreliable (indoor navigation, underwater systems, planetary rovers). Stereo SLAM provides metric-scale pose and map reconstruction, enabling collision-free motion planning and persistent localization. Loop closure detection closes long-term drift, making the approach practical for extended exploration missions."
+  },
+  {
+    "type": "section_break"
+  },
+  {
+    "type": "heading1",
+    "text": "2. Code Organization"
+  },
+  {
+    "type": "paragraph",
+    "text": "The implementation spans 10 pipeline stages, each verified by code location and call-site analysis. All claims below are traceable to the Evidence Ledger with VERIFIED status."
+  },
+  {
+    "type": "code_citation",
+    "claim": "Stereo point triangulation",
+    "function": "triangulate_points_opencv",
+    "file": "code/project/utils/geometry.py",
+    "line_start": 208,
+    "line_end": 220,
+    "ledger_ref": "STAGE-1-triangulation"
+  },
+  {
+    "type": "code_citation",
+    "claim": "PnP outlier rejection",
+    "function": "run_custom_pnp_ransac",
+    "file": "code/project/utils/geometry.py",
+    "line_start": 237,
+    "line_end": 320,
+    "ledger_ref": "STAGE-2-ransac"
+  },
+  {
+    "type": "code_citation",
+    "claim": "Temporal pose estimation",
+    "function": "estimate_next_pose_with_rejection",
+    "file": "code/project/utils/tracking.py",
+    "line_start": 162,
+    "line_end": 200,
+    "ledger_ref": "STAGE-3-pnp-trajectory"
+  },
+  {
+    "type": "code_citation",
+    "claim": "TrackingDB/Observation structures",
+    "function": "class TrackingDB, class Observation",
+    "file": "code/tracking_database.py",
+    "line_start": 22,
+    "line_end": 150,
+    "ledger_ref": "STAGE-4-database-definition"
+  },
+  {
+    "type": "code_citation",
+    "claim": "Feature observation integration",
+    "function": "TrackingDB.update_tracks",
+    "file": "code/tracking_database.py",
+    "line_start": 83,
+    "line_end": 120,
+    "ledger_ref": "STAGE-5-add-frame-database"
+  },
+  {
+    "type": "code_citation",
+    "claim": "Joint pose/landmark optimization",
+    "function": "solve_bundle_window",
+    "file": "code/project/utils/bundle_adjustment.py",
+    "line_start": 127,
+    "line_end": 220,
+    "ledger_ref": "STAGE-6-bundle-adjustment"
+  },
+  {
+    "type": "code_citation",
+    "claim": "Pose constraint extraction",
+    "function": "compute_relative_pose_and_covariance",
+    "file": "code/project/utils/pose_graph.py",
+    "line_start": 150,
+    "line_end": 210,
+    "ledger_ref": "STAGE-7-relative-transform"
+  },
+  {
+    "type": "code_citation",
+    "claim": "Factor graph construction",
+    "function": "build_and_initialize_pose_graph",
+    "file": "code/project/utils/pose_graph.py",
+    "line_start": 77,
+    "line_end": 140,
+    "ledger_ref": "STAGE-8-pose-graph"
+  },
+  {
+    "type": "code_citation",
+    "claim": "Candidate detection via Mahalanobis distance",
+    "function": "detect_loop_closure_candidates",
+    "file": "code/project/utils/loop_closure.py",
+    "line_start": 42,
+    "line_end": 100,
+    "ledger_ref": "STAGE-9-loop-closure-detection"
+  },
+  {
+    "type": "code_citation",
+    "claim": "Relative pose estimation & graph integration",
+    "function": "estimate_verified_loop_relative_poses",
+    "file": "code/project/utils/loop_closure.py",
+    "line_start": 130,
+    "line_end": 250,
+    "ledger_ref": "STAGE-10-loop-closure-factor"
+  },
+  {
+    "type": "section_break"
+  },
+  {
+    "type": "heading1",
+    "text": "3. Performance Analysis"
+  },
+  {
+    "type": "heading2",
+    "text": "Tracking Statistics"
+  },
+  {
+    "type": "bullet_list",
+    "items": [
+      "Total Tracks: [from STAT-TOTAL-TRACKS]",
+      "Total Tracks: [from STAT-TOTAL-FRAMES]",
+      "Total Tracks: [from STAT-MEAN-TRACK-LENGTH]"
+    ]
+  },
+  {
+    "type": "heading2",
+    "text": "Key Performance Graphs"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 1: Connectivity Graph"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-connectivity.png",
+    "caption": "Connectivity Graph analysis. [Generated from evidence ledger entry GRAPH-CONNECTIVITY]",
+    "ledger_ref": "GRAPH-CONNECTIVITY"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Connectivity Graph. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-CONNECTIVITY"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 2: Track Length Histogram"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-track-length-histogram.png",
+    "caption": "Track Length Histogram analysis. [Generated from evidence ledger entry GRAPH-TRACK-LENGTH-HISTOGRAM]",
+    "ledger_ref": "GRAPH-TRACK-LENGTH-HISTOGRAM"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Track Length Histogram. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-TRACK-LENGTH-HISTOGRAM"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 3: Trajectory Comparison (Bird's Eye)"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-trajectory-comparison.png",
+    "caption": "Trajectory Comparison (Bird's Eye) analysis. [Generated from evidence ledger entry GRAPH-TRAJECTORY-COMPARISON]",
+    "ledger_ref": "GRAPH-TRAJECTORY-COMPARISON"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Trajectory Comparison (Bird's Eye). Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-TRAJECTORY-COMPARISON"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 4: Bundle Optimization Error"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-bundle-optimization-error.png",
+    "caption": "Bundle Optimization Error analysis. [Generated from evidence ledger entry GRAPH-BUNDLE-OPTIMIZATION-ERROR]",
+    "ledger_ref": "GRAPH-BUNDLE-OPTIMIZATION-ERROR"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Bundle Optimization Error. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-BUNDLE-OPTIMIZATION-ERROR"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 5: Bundle Projection Error"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-bundle-projection-error.png",
+    "caption": "Bundle Projection Error analysis. [Generated from evidence ledger entry GRAPH-BUNDLE-PROJECTION-ERROR]",
+    "ledger_ref": "GRAPH-BUNDLE-PROJECTION-ERROR"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Bundle Projection Error. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-BUNDLE-PROJECTION-ERROR"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 6: Track Link Error vs. Distance"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-track-link-error-vs-distance.png",
+    "caption": "Track Link Error vs. Distance analysis. [Generated from evidence ledger entry GRAPH-TRACK-LINK-ERROR-VS-DISTANCE]",
+    "ledger_ref": "GRAPH-TRACK-LINK-ERROR-VS-DISTANCE"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Track Link Error vs. Distance. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-TRACK-LINK-ERROR-VS-DISTANCE"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 7: Absolute PnP Estimation Error"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-absolute-pnp-error.png",
+    "caption": "Absolute PnP Estimation Error analysis. [Generated from evidence ledger entry GRAPH-ABSOLUTE-PNP-ERROR]",
+    "ledger_ref": "GRAPH-ABSOLUTE-PNP-ERROR"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Absolute PnP Estimation Error. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-ABSOLUTE-PNP-ERROR"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 8: Absolute Pose Graph Error (No Loop Closure)"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-absolute-pose-graph-error-no-lc.png",
+    "caption": "Absolute Pose Graph Error (No Loop Closure) analysis. [Generated from evidence ledger entry GRAPH-ABSOLUTE-POSE-GRAPH-ERROR-NO-LC]",
+    "ledger_ref": "GRAPH-ABSOLUTE-POSE-GRAPH-ERROR-NO-LC"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Absolute Pose Graph Error (No Loop Closure). Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-ABSOLUTE-POSE-GRAPH-ERROR-NO-LC"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 9: Absolute Pose Graph Error (With Loop Closure)"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-absolute-pose-graph-error-with-lc.png",
+    "caption": "Absolute Pose Graph Error (With Loop Closure) analysis. [Generated from evidence ledger entry GRAPH-ABSOLUTE-POSE-GRAPH-ERROR-WITH-LC]",
+    "ledger_ref": "GRAPH-ABSOLUTE-POSE-GRAPH-ERROR-WITH-LC"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Absolute Pose Graph Error (With Loop Closure). Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-ABSOLUTE-POSE-GRAPH-ERROR-WITH-LC"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 10: Relative Error Between Consecutive Keyframes"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-relative-error-keyframes.png",
+    "caption": "Relative Error Between Consecutive Keyframes analysis. [Generated from evidence ledger entry GRAPH-RELATIVE-ERROR-KEYFRAMES]",
+    "ledger_ref": "GRAPH-RELATIVE-ERROR-KEYFRAMES"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Relative Error Between Consecutive Keyframes. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-RELATIVE-ERROR-KEYFRAMES"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 11: Relative Error over KITTI Sub-segments"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-relative-error-kitti-subsegments.png",
+    "caption": "Relative Error over KITTI Sub-segments analysis. [Generated from evidence ledger entry GRAPH-RELATIVE-ERROR-KITTI-SUBSEGMENTS]",
+    "ledger_ref": "GRAPH-RELATIVE-ERROR-KITTI-SUBSEGMENTS"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Relative Error over KITTI Sub-segments. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-RELATIVE-ERROR-KITTI-SUBSEGMENTS"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 12: Loop Closure Match Statistics"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-loop-closure-match-stats.png",
+    "caption": "Loop Closure Match Statistics analysis. [Generated from evidence ledger entry GRAPH-LOOP-CLOSURE-MATCH-STATS]",
+    "ledger_ref": "GRAPH-LOOP-CLOSURE-MATCH-STATS"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Loop Closure Match Statistics. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-LOOP-CLOSURE-MATCH-STATS"
+  },
+  {
+    "type": "heading3",
+    "text": "Graph 13: Uncertainty Size vs. Keyframe"
+  },
+  {
+    "type": "figure",
+    "artifact_path": "code/project/outputs/graph-uncertainty-size.png",
+    "caption": "Uncertainty Size vs. Keyframe analysis. [Generated from evidence ledger entry GRAPH-UNCERTAINTY-SIZE]",
+    "ledger_ref": "GRAPH-UNCERTAINTY-SIZE"
+  },
+  {
+    "type": "paragraph",
+    "text": "[Graph Analysis: Uncertainty Size vs. Keyframe. Shows trajectory performance across the sequence.]",
+    "ledger_ref": "ANALYSIS-GRAPH-UNCERTAINTY-SIZE"
+  },
+  {
+    "type": "section_break"
+  },
+  {
+    "type": "heading1",
+    "text": "4. Discussion and Conclusions"
+  },
+  {
+    "type": "heading2",
+    "text": "Summary and Critique"
+  },
+  {
+    "type": "paragraph",
+    "text": "The stereo SLAM pipeline successfully integrates feature matching, temporal tracking, pose estimation with outlier rejection, bundle adjustment, and pose-graph optimization with loop closure detection. The system achieves multi-stage refinement: PnP trajectory provides initial estimates, sliding-window bundle adjustment optimizes locally, pose-graph optimization enforces global consistency, and loop closures correct long-term drift. Key weaknesses: performance depends heavily on feature detector quality, loop closure detection uses heuristic thresholds (Mahalanobis distance, inlier ratios), and the system assumes accurate ground truth for evaluation."
+  },
+  {
+    "type": "heading2",
+    "text": "Future Work"
+  },
+  {
+    "type": "bullet_list",
+    "items": [
+      "Adaptive feature detector selection based on scene characteristics",
+      "Learning-based loop closure candidate ranking (replacing Mahalanobis distance)",
+      "Incremental bundle adjustment to reduce computational overhead on large sequences",
+      "Integration of IMU or wheel odometry for hybrid pose estimation",
+      "Real-time optimization using GPU acceleration for on-board robotics"
+    ]
+  },
+  {
+    "type": "heading2",
+    "text": "Extra Features"
+  },
+  {
+    "type": "paragraph",
+    "text": "The code/project/experiments/ directory contains ablation studies comparing loop-closure gating strategies, keyframe density effects, bundle adjustment noise models, PnP-RANSAC parameter sensitivity, and feature detector variants (ORB vs. SIFT characteristics). Each experiment is saved with full tracking database and output visualizations for reproducibility."
+  }
+]

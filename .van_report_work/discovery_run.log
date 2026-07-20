@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/.van_report_work/generate_verified_report.py", line 14, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
