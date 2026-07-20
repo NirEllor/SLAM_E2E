@@ -25,7 +25,7 @@ This package contains scripts and infrastructure for running systematic comparis
 - **Variants**: strict (300, 0.8), baseline (1000, 0.6), loose (3000, 0.4)
 - **Loop Closure**: ✅ **ENABLED** (this experiment specifically tests loop-closure gating)
 - **Cost**: Expensive (~30-60 min for full sequence due to RANSAC consensus verification on loop candidates)
-- **DB**: Dedicated 400-frame+ DB (`tracking_db_lc_test_full.pkl`)
+- **DB**: Full sequence, dedicated DB (`tracking_db_lc_test_full.pkl`)
 
 ### 2. Keyframe Density (`compare_keyframe_density.py`)
 - **Parameters**: `distance_threshold` (others fixed at defaults)
