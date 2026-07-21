@@ -132,10 +132,12 @@ A detailed quantitative and qualitative analysis of system performance. The sect
    - Identify weak points, unrealistic assumptions, or aspects that could be improved
    - Be honest about limitations and potential failure modes
 
-2. **Future Work**:
-   - Propose concrete directions for system improvement
-   - Suggest research directions or algorithmic enhancements
-   - Discuss scalability or robustness challenges
+2. **Future Work** (with Real Evidence if `improvements/` folder exists):
+   - If `code/project/improvements/` folder exists with results from robust pose-graph techniques:
+     * **Switchable Constraints** (Sünderhauf & Protzel, IROS 2012) — cite exact function names/file paths, cite baseline vs. switchable-constraints metrics from `improvements/results/*.pkl`
+     * **Dynamic Covariance Scaling** (Agarwal et al., ICRA 2013) — cite exact function names/file paths, cite baseline vs. DCS metrics from `improvements/results/*.pkl`
+     * **Stress Test Results** — cite findings from loosened-gate injection tests showing robustness comparison
+   - Otherwise: propose concrete directions for system improvement, suggest research directions or algorithmic enhancements, discuss scalability or robustness challenges
 
 3. **Extra Features** (if applicable):
    - If additional experiments, ablations, or features exist beyond the minimum assignment, describe what was researched/implemented, why, and what results were achieved

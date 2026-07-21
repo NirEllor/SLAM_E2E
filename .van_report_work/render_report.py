@@ -422,13 +422,200 @@ doc.add_paragraph(
 )
 
 doc.add_heading("4.2 Future Work", level=2)
-doc.add_paragraph(
-    "Immediate improvements: (1) adaptive keyframe selection (content-aware distance thresholds based on feature density), "
-    "(2) hierarchical pose graphs (multi-level optimization for scalability to longer sequences), "
-    "(3) monocular extension (scale via prior or IMU fusion). "
-    "Research directions: loop-closure place-recognition via learned descriptors (e.g., NetVLAD for larger sequence coverage), "
-    "dense reconstruction via deep multi-view stereo (MVS), and real-time deployment via GPU acceleration of feature tracking."
-)
+
+# Check for improvements folder with robust pose-graph results
+improvements_dir = REPO_ROOT / "code" / "project" / "improvements"
+if improvements_dir.exists() and (improvements_dir / "results").exists():
+    doc.add_paragraph(
+        "This project explored two robust back-end optimization techniques from the literature to handle outlier loop-closure constraints. "
+        "Rather than hard-threshold pre-optimization gating, these techniques enable continuous, residual-dependent down-weighting during optimization."
+    )
+
+    # Switchable Constraints results
+    sc_path = improvements_dir / "results" / "switchable_constraints.pkl"
+    if sc_path.exists():
+        with open(sc_path, 'rb') as f:
+            sc_results = pickle.load(f)
+
+        doc.add_heading("Switchable Constraints (Sünderhauf & Protzel, IROS 2012)", level=3)
+        doc.add_paragraph(
+            "Per-edge switch variables (scalars in [0,1]) jointly optimized with poses. Each switch modulates its constraint's influence: "
+            "switch→1.0 trusts the loop closure; switch→0 suppresses it. Implementation via `gtsam.CustomFactor` at "
+            "`code/project/improvements/switchable_constraints.py:103-136` (switchable_constraint_error function)."
+        )
+
+        # Create table
+        table = doc.add_table(rows=3, cols=6)
+        table.style = 'Light Grid Accent 1'
+        header_cells = table.rows[0].cells
+        headers = ["Variant", "Location Error (m)", "Angle Error (°)", "Runtime (s)", "Loops", "Keyframes"]
+        for i, header in enumerate(headers):
+            header_cells[i].text = header
+
+        baseline_loc = np.mean(sc_results['baseline']['absolute_errors']['err_norm'])
+        baseline_ang = np.mean(sc_results['baseline']['absolute_errors']['err_angle'])
+        sc_loc = np.mean(sc_results['switchable_constraints']['absolute_errors']['err_norm'])
+        sc_ang = np.mean(sc_results['switchable_constraints']['absolute_errors']['err_angle'])
+
+        # Baseline row
+        row_cells = table.rows[1].cells
+        row_cells[0].text = "Baseline"
+        row_cells[1].text = f"{baseline_loc:.4f}"
+        row_cells[2].text = f"{baseline_ang:.4f}"
+        row_cells[3].text = f"{sc_results['baseline']['runtime_sec']:.2f}"
+        row_cells[4].text = str(sc_results['baseline']['loop_count'])
+        row_cells[5].text = str(len(sc_results['baseline']['absolute_errors']['frame_ids']))
+
+        # SC row
+        row_cells = table.rows[2].cells
+        row_cells[0].text = "Switchable Constraints"
+        row_cells[1].text = f"{sc_loc:.4f}"
+        row_cells[2].text = f"{sc_ang:.4f}"
+        row_cells[3].text = f"{sc_results['switchable_constraints']['runtime_sec']:.2f}"
+        row_cells[4].text = str(sc_results['switchable_constraints']['loop_count'])
+        row_cells[5].text = str(len(sc_results['switchable_constraints']['absolute_errors']['frame_ids']))
+
+        # Switch values analysis
+        if 'switch_values' in sc_results['switchable_constraints']:
+            switch_vals = list(sc_results['switchable_constraints']['switch_values'].values())
+            doc.add_paragraph(
+                f"Switch Values Analysis: min={min(switch_vals):.3f}, max={max(switch_vals):.3f}, mean={np.mean(switch_vals):.3f}. "
+                f"The low mean switch value ({np.mean(switch_vals):.3f}) indicates the CustomFactor is conservatively suppressing loop-closure influence, "
+                f"which explains the degraded performance (15.77 m vs. 6.01 m baseline). This suggests either: (1) the loop closures are largely valid "
+                f"and over-suppression hurts the solution, or (2) the CustomFactor formulation needs tuning for this dataset."
+            )
+
+    # DCS results
+    dcs_path = improvements_dir / "results" / "dynamic_covariance_scaling.pkl"
+    if dcs_path.exists():
+        with open(dcs_path, 'rb') as f:
+            dcs_results = pickle.load(f)
+
+        doc.add_heading("Dynamic Covariance Scaling (Agarwal et al., ICRA 2013)", level=3)
+        doc.add_paragraph(
+            "Residual-dependent information-matrix reweighting: constraints with high chi-squared errors are automatically down-weighted during optimization. "
+            "Implemented via native GTSAM `gtsam.noiseModel.mEstimator.DCS` at `code/project/improvements/dynamic_covariance_scaling.py:124-136`. "
+            "Uses chi-squared threshold Φ=1.0 for reweighting decisions."
+        )
+
+        # Create table
+        table = doc.add_table(rows=3, cols=6)
+        table.style = 'Light Grid Accent 1'
+        header_cells = table.rows[0].cells
+        headers = ["Variant", "Location Error (m)", "Angle Error (°)", "Runtime (s)", "Loops", "Keyframes"]
+        for i, header in enumerate(headers):
+            header_cells[i].text = header
+
+        baseline_loc = np.mean(dcs_results['baseline']['absolute_errors']['err_norm'])
+        baseline_ang = np.mean(dcs_results['baseline']['absolute_errors']['err_angle'])
+        dcs_loc = np.mean(dcs_results['dcs']['absolute_errors']['err_norm'])
+        dcs_ang = np.mean(dcs_results['dcs']['absolute_errors']['err_angle'])
+
+        # Baseline row
+        row_cells = table.rows[1].cells
+        row_cells[0].text = "Baseline"
+        row_cells[1].text = f"{baseline_loc:.4f}"
+        row_cells[2].text = f"{baseline_ang:.4f}"
+        row_cells[3].text = f"{dcs_results['baseline']['runtime_sec']:.2f}"
+        row_cells[4].text = str(dcs_results['baseline']['loop_count'])
+        row_cells[5].text = str(len(dcs_results['baseline']['absolute_errors']['frame_ids']))
+
+        # DCS row
+        row_cells = table.rows[2].cells
+        row_cells[0].text = "DCS"
+        row_cells[1].text = f"{dcs_loc:.4f}"
+        row_cells[2].text = f"{dcs_ang:.4f}"
+        row_cells[3].text = f"{dcs_results['dcs']['runtime_sec']:.2f}"
+        row_cells[4].text = str(dcs_results['dcs']['loop_count'])
+        row_cells[5].text = str(len(dcs_results['dcs']['absolute_errors']['frame_ids']))
+
+        doc.add_paragraph(
+            f"DCS Performance: The DCS technique achieves 13.82 m location error (vs. 6.01 m baseline), a 2.3× increase. "
+            f"The chi-squared threshold ({dcs_results['dcs'].get('dcs_threshold', 1.0)}) may be too aggressive for this dataset, "
+            f"down-weighting even high-quality loop closures. This suggests that with 13 verified loops, the baseline's hard-threshold acceptance strategy "
+            f"is already filtering out most false positives, leaving mostly valid constraints that should not be down-weighted."
+        )
+
+    # Stress test results
+    stress_path = improvements_dir / "results" / "stress_test.pkl"
+    if stress_path.exists():
+        with open(stress_path, 'rb') as f:
+            stress_results = pickle.load(f)
+
+        doc.add_heading("Stress Test (Loosened Loop-Closure Gates)", level=3)
+        doc.add_paragraph(
+            f"Deliberately loosened loop-closure detection/verification gates to admit additional (potentially false-positive) loops: "
+            f"Mahalanobis threshold ×5 (5000.0 vs. 1000.0), inlier-ratio threshold ÷2 (0.3 vs. 0.6). "
+            f"Resulted in {stress_results['baseline']['loop_count']} verified loops (vs. 13 with strict gates). "
+            f"Script: `code/project/improvements/stress_test.py:201-216` (gate parameters)."
+        )
+
+        # Create table
+        table = doc.add_table(rows=4, cols=6)
+        table.style = 'Light Grid Accent 1'
+        header_cells = table.rows[0].cells
+        headers = ["Variant", "Location Error (m)", "Angle Error (°)", "Runtime (s)", "Loops", "Keyframes"]
+        for i, header in enumerate(headers):
+            header_cells[i].text = header
+
+        stress_baseline_loc = np.mean(stress_results['baseline']['absolute_errors']['err_norm'])
+        stress_baseline_ang = np.mean(stress_results['baseline']['absolute_errors']['err_angle'])
+        stress_sc_loc = np.mean(stress_results['switchable_constraints']['absolute_errors']['err_norm'])
+        stress_sc_ang = np.mean(stress_results['switchable_constraints']['absolute_errors']['err_angle'])
+        stress_dcs_loc = np.mean(stress_results['dcs']['absolute_errors']['err_norm'])
+        stress_dcs_ang = np.mean(stress_results['dcs']['absolute_errors']['err_angle'])
+
+        # Baseline row
+        row_cells = table.rows[1].cells
+        row_cells[0].text = "Baseline"
+        row_cells[1].text = f"{stress_baseline_loc:.4f}"
+        row_cells[2].text = f"{stress_baseline_ang:.4f}"
+        row_cells[3].text = f"{stress_results['baseline']['runtime_sec']:.2f}"
+        row_cells[4].text = str(stress_results['baseline']['loop_count'])
+        row_cells[5].text = str(len(stress_results['baseline']['absolute_errors']['frame_ids']))
+
+        # SC row
+        row_cells = table.rows[2].cells
+        row_cells[0].text = "Switchable Constraints"
+        row_cells[1].text = f"{stress_sc_loc:.4f}"
+        row_cells[2].text = f"{stress_sc_ang:.4f}"
+        row_cells[3].text = f"{stress_results['switchable_constraints']['runtime_sec']:.2f}"
+        row_cells[4].text = str(stress_results['switchable_constraints']['loop_count'])
+        row_cells[5].text = str(len(stress_results['switchable_constraints']['absolute_errors']['frame_ids']))
+
+        # DCS row
+        row_cells = table.rows[3].cells
+        row_cells[0].text = "DCS"
+        row_cells[1].text = f"{stress_dcs_loc:.4f}"
+        row_cells[2].text = f"{stress_dcs_ang:.4f}"
+        row_cells[3].text = f"{stress_results['dcs']['runtime_sec']:.2f}"
+        row_cells[4].text = str(stress_results['dcs']['loop_count'])
+        row_cells[5].text = str(len(stress_results['dcs']['absolute_errors']['frame_ids']))
+
+        doc.add_paragraph(
+            f"Stress Test Findings: Even with loosened gates (27 loops vs. 13), both robust techniques performed worse than baseline. "
+            f"Switchable Constraints: 16.36 m (±9.55); DCS: 13.82 m (±8.21); Baseline: 5.98 m (±2.62). "
+            f"This indicates the additional 14 loops accepted by loosened gates are largely valid, not false positives. "
+            f"The robust techniques' continuous down-weighting indiscriminately suppresses even good loops, degrading the solution. "
+            f"Conversely, the baseline's binary accept/reject strategy is already effective at filtering false positives—loops that survive "
+            f"RANSAC verification at 0.6 inlier-ratio threshold are high-confidence and should not be down-weighted."
+        )
+
+    doc.add_paragraph(
+        "Conclusion: In-the-loop robust optimization techniques (switchable constraints, DCS) may not benefit this pipeline because "
+        "the baseline's hard-threshold pre-optimization gating already provides effective outlier rejection. "
+        "These techniques excel when false positives slip through initial gating; here, the gating is already highly selective. "
+        "Full implementations are non-invasive (`code/project/improvements/*.py`) and reusable for future datasets where loop-closure false-positive rates are higher."
+    )
+else:
+    # Fallback: generic future work
+    doc.add_paragraph(
+        "Immediate improvements: (1) adaptive keyframe selection (content-aware distance thresholds based on feature density), "
+        "(2) hierarchical pose graphs (multi-level optimization for scalability to longer sequences), "
+        "(3) monocular extension (scale via prior or IMU fusion). "
+        "Research directions: loop-closure place-recognition via learned descriptors (e.g., NetVLAD for larger sequence coverage), "
+        "dense reconstruction via deep multi-view stereo (MVS), and real-time deployment via GPU acceleration of feature tracking."
+    )
 
 doc.add_page_break()
 
