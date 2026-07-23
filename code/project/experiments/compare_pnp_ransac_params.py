@@ -48,7 +48,7 @@ def main():
         print(f"  Running pipeline...")
 
         # Run pipeline (disable loop closure to avoid 4+ hour bottleneck)
-        results = run_pipeline_variant(db, run_loop_closure=False)
+        results = run_pipeline_variant(db, run_loop_closure=True)
         results_dict[label] = results
 
         # Save results

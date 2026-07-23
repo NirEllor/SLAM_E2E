@@ -55,7 +55,7 @@ def main():
             'huber_k': huber_k
         }
 
-        results = run_pipeline_variant(db, bundle_kwargs=bundle_kwargs, run_loop_closure=False)
+        results = run_pipeline_variant(db, bundle_kwargs=bundle_kwargs, run_loop_closure=True)
         results_dict[label] = results
 
         # Save results

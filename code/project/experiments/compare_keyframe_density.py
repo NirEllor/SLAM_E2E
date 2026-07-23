@@ -46,7 +46,7 @@ def main():
             'max_gap': 20
         }
 
-        results = run_pipeline_variant(db, keyframe_kwargs=keyframe_kwargs, run_loop_closure=False)
+        results = run_pipeline_variant(db, keyframe_kwargs=keyframe_kwargs, run_loop_closure=True)
         results_dict[label] = results
 
         # Save results
