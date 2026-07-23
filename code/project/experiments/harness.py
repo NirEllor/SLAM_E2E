@@ -31,7 +31,7 @@ from utils.loop_closure import (
 
 
 def build_variant_db(detector_type='akaze', pnp_threshold=2, pnp_iterations=50,
-                     pnp_max_no_improvement=12, num_frames=None, cache_tag=None):
+                     pnp_max_no_improvement=12, num_frames=None, cache_tag=None, orb_n_features=None):
     """
     Builds or loads a variant TrackingDB with specified feature detector and PnP-RANSAC params.
 
@@ -43,7 +43,8 @@ def build_variant_db(detector_type='akaze', pnp_threshold=2, pnp_iterations=50,
         pnp_iterations: max RANSAC iterations
         pnp_max_no_improvement: early stopping after N iterations with no improvement
         num_frames: number of frames to process (default: all available)
-        cache_tag: identifier for variant pickle (e.g., 'akaze_baseline', 'orb_700', 'sift')
+        cache_tag: identifier for variant pickle (e.g., 'akaze_baseline', 'orb_3000', 'sift')
+        orb_n_features: number of features for ORB detector (default 700 if None)
 
     Returns:
         TrackingDB object
@@ -91,7 +92,8 @@ def build_variant_db(detector_type='akaze', pnp_threshold=2, pnp_iterations=50,
         detector_type=detector_type,
         pnp_threshold=pnp_threshold,
         pnp_iterations=pnp_iterations,
-        pnp_max_no_improvement=pnp_max_no_improvement
+        pnp_max_no_improvement=pnp_max_no_improvement,
+        orb_n_features=orb_n_features
     )
 
     # Save to variant pickle (NOT the shared baseline DB_PKL_PATH)
@@ -148,11 +150,7 @@ def run_pipeline_variant(db, keyframe_kwargs=None, bundle_kwargs=None, loop_kwar
     bundle_params = {'max_tracks_per_window': 150, 'prior_sigma': 1e-6}
     bundle_params.update(bundle_kwargs)
 
-    # Extract only the params that solve_bundle_window accepts (max_tracks_per_window, prior_sigma via kwargs)
-    solve_bundle_params = {k: bundle_params[k] for k in ['max_tracks_per_window'] if k in bundle_params}
-    # Note: stereo_sigma/huber_k will be threaded through solve_bundle_window if implemented
-
-    relative_poses, relative_covs = compute_all_relative_constraints(db, keyframes)
+    relative_poses, relative_covs = compute_all_relative_constraints(db, keyframes, bundle_kwargs=bundle_params)
     results['relative_poses'] = relative_poses
     results['relative_covs'] = relative_covs
     print(f"Relative constraints: {len(relative_poses)} edges")

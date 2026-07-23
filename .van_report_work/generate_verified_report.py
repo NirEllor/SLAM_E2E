@@ -137,6 +137,31 @@ for exp_id, exp_name, filenames in experiments:
     experiments_data.append(exp_entry)
 
 # ============================================================================
+# IMPROVEMENTS SECTION (3 trajectory images for Section 4.2)
+# ============================================================================
+print("\nPhase 2.5: Discovering improvement trajectory images (Section 4.2)...")
+
+improvements_dir = Path(CANONICAL_TREE) / "improvements"
+improvements_outputs_dir = improvements_dir / "outputs"
+
+improvement_images = [
+    ("switchable_constraints_trajectory.png", "Switchable Constraints trajectory"),
+    ("dynamic_covariance_scaling_trajectory.png", "Dynamic Covariance Scaling trajectory"),
+    ("stress_test_trajectory.png", "Stress Test trajectory"),
+]
+
+for filename, name in improvement_images:
+    fig_path = improvements_outputs_dir / filename
+    if fig_path.exists():
+        add_evidence(f"IMPROVEMENT-{filename}", name, "VERIFIED",
+                    {"file": str(fig_path), "size_bytes": fig_path.stat().st_size})
+        print(f"✓ Improvement: {name}")
+    else:
+        print(f"⚠ Improvement: {filename} NOT FOUND")
+        add_evidence(f"IMPROVEMENT-{filename}", name, "TRUE_GAP",
+                    {"file": str(fig_path), "reason": "file not found"})
+
+# ============================================================================
 # SECTION 3b: MANDATORY TRACKING STATISTICS (6 items)
 # ============================================================================
 print("\nPhase 3: Computing mandatory tracking statistics...")

@@ -444,6 +444,18 @@ if improvements_dir.exists() and (improvements_dir / "results").exists():
             "`code/project/improvements/switchable_constraints.py:103-136` (switchable_constraint_error function)."
         )
 
+        # Embed trajectory comparison plot
+        sc_img_path = improvements_dir / "outputs" / "switchable_constraints_trajectory.png"
+        if sc_img_path.exists():
+            try:
+                doc.add_picture(str(sc_img_path), width=Inches(5.5))
+                last_paragraph = doc.paragraphs[-1]
+                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception as e:
+                doc.add_paragraph(f"[Image failed to embed: switchable_constraints_trajectory.png — {e}]")
+        else:
+            doc.add_paragraph(f"[Image not found: switchable_constraints_trajectory.png]")
+
         # Create table
         table = doc.add_table(rows=3, cols=6)
         table.style = 'Light Grid Accent 1'
@@ -498,6 +510,18 @@ if improvements_dir.exists() and (improvements_dir / "results").exists():
             "Uses chi-squared threshold Φ=1.0 for reweighting decisions."
         )
 
+        # Embed trajectory comparison plot
+        dcs_img_path = improvements_dir / "outputs" / "dynamic_covariance_scaling_trajectory.png"
+        if dcs_img_path.exists():
+            try:
+                doc.add_picture(str(dcs_img_path), width=Inches(5.5))
+                last_paragraph = doc.paragraphs[-1]
+                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception as e:
+                doc.add_paragraph(f"[Image failed to embed: dynamic_covariance_scaling_trajectory.png — {e}]")
+        else:
+            doc.add_paragraph(f"[Image not found: dynamic_covariance_scaling_trajectory.png]")
+
         # Create table
         table = doc.add_table(rows=3, cols=6)
         table.style = 'Light Grid Accent 1'
@@ -549,6 +573,18 @@ if improvements_dir.exists() and (improvements_dir / "results").exists():
             f"Resulted in {stress_results['baseline']['loop_count']} verified loops (vs. 13 with strict gates). "
             f"Script: `code/project/improvements/stress_test.py:201-216` (gate parameters)."
         )
+
+        # Embed trajectory comparison plot
+        stress_img_path = improvements_dir / "outputs" / "stress_test_trajectory.png"
+        if stress_img_path.exists():
+            try:
+                doc.add_picture(str(stress_img_path), width=Inches(5.5))
+                last_paragraph = doc.paragraphs[-1]
+                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception as e:
+                doc.add_paragraph(f"[Image failed to embed: stress_test_trajectory.png — {e}]")
+        else:
+            doc.add_paragraph(f"[Image not found: stress_test_trajectory.png]")
 
         # Create table
         table = doc.add_table(rows=4, cols=6)
@@ -696,15 +732,22 @@ doc.add_paragraph(
 # Save document (use temp path if on WSL to avoid permission issues)
 if sys.platform != "win32":
     import tempfile
+    import subprocess
     temp_dir = Path(tempfile.gettempdir())
     report_path = temp_dir / "report.docx"
     doc.save(str(report_path))
     print(f"✓ Generated: {report_path}")
-    # Copy to final location
-    import shutil
+    # Move to final location using bash mv (handles locked files better than Python shutil)
     final_path = REPO_ROOT / "report.docx"
-    shutil.copy(str(report_path), str(final_path))
-    print(f"✓ Saved: {final_path}")
+    try:
+        subprocess.run(["mv", "-f", str(report_path), str(final_path)], check=True, capture_output=True)
+        print(f"✓ Saved: {final_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"⚠ Failed to move via mv: {e.stderr.decode()}")
+        # Fallback: try shutil.copy with overwrite
+        import shutil
+        shutil.copy(str(report_path), str(final_path))
+        print(f"✓ Saved (via fallback): {final_path}")
 else:
     report_path = REPO_ROOT / "report.docx"
     doc.save(str(report_path))
@@ -742,15 +785,22 @@ problem_doc.add_paragraph(f"Total TRUE_GAP entries: {len(gap_entries)}")
 
 if sys.platform != "win32":
     import tempfile
+    import subprocess
     temp_dir = Path(tempfile.gettempdir())
     problem_path = temp_dir / "problem.docx"
     problem_doc.save(str(problem_path))
     print(f"✓ Generated: {problem_path}")
-    # Copy to final location
-    import shutil
+    # Move to final location using bash mv
     final_problem_path = REPO_ROOT / "problem.docx"
-    shutil.copy(str(problem_path), str(final_problem_path))
-    print(f"✓ Saved: {final_problem_path}")
+    try:
+        subprocess.run(["mv", "-f", str(problem_path), str(final_problem_path)], check=True, capture_output=True)
+        print(f"✓ Saved: {final_problem_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"⚠ Failed to move via mv: {e.stderr.decode()}")
+        # Fallback: try shutil.copy with overwrite
+        import shutil
+        shutil.copy(str(problem_path), str(final_problem_path))
+        print(f"✓ Saved (via fallback): {final_problem_path}")
 else:
     problem_path = REPO_ROOT / "problem.docx"
     problem_doc.save(str(problem_path))

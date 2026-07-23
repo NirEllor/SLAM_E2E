@@ -72,7 +72,7 @@ ls -la code/tracking_db_*.pkl  # Should see variant files:
 # code/tracking_db_strict_pnp.pkl
 # code/tracking_db_baseline_pnp.pkl
 # code/tracking_db_loose_pnp.pkl
-# code/tracking_db_orb_700.pkl
+# code/tracking_db_orb_3000.pkl
 # code/tracking_db_sift_default.pkl
 ```
 

@@ -225,6 +225,16 @@ def run_dynamic_covariance_scaling_pipeline():
         pickle.dump(results, f)
     print(f"\nResults saved to {output_file}")
 
+    # Generate trajectory comparison plot
+    from experiments.plotting import plot_multi_variant_trajectory
+    plot_output_dir = Path(__file__).parent / 'outputs'
+    plot_output_dir.mkdir(exist_ok=True)
+    plot_multi_variant_trajectory(
+        results,
+        output_path=plot_output_dir / 'dynamic_covariance_scaling_trajectory.png',
+        title='Dynamic Covariance Scaling vs. Baseline — Trajectory'
+    )
+
     return results
 
 

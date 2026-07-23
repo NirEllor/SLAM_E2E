@@ -31,7 +31,7 @@ def plot_multi_variant_trajectory(variants_dict, output_path=None, title="Multi-
     gt_poses = read_ground_truth_poses()
     gt_positions = np.array([pose_translation_np(
         gtsam.Pose3(gtsam.Rot3(R), gtsam.Point3(*(-R.T @ t).flatten()))
-    ) for R, t in gt_poses[:500]])  # Limit to first 500 for clarity
+    ) for R, t in gt_poses])
     ax.plot(gt_positions[:, 0], gt_positions[:, 2], 'g-', linewidth=2.5, label='Ground Truth', alpha=0.8)
 
     # Variants (distinct colors)

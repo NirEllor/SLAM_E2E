@@ -361,7 +361,7 @@ def estimate_next_pose_with_rejection(prev_data, curr_data, R_global, t_global, 
     return R_candidate, t_candidate, inliers, outliers
 
 
-def run_single_pair(idx=0, display=False, plot_3d=True, detector_type='akaze'):
+def run_single_pair(idx=0, display=False, plot_3d=True, detector_type='akaze', orb_n_features=None):
     """Executes feature detection, matching, epipolar filtering, and triangulation for a single frame.
 
     Args:
@@ -369,6 +369,7 @@ def run_single_pair(idx=0, display=False, plot_3d=True, detector_type='akaze'):
         display: whether to print status
         plot_3d: whether to plot 3D points (default True)
         detector_type: 'akaze' (default), 'orb', or 'sift'
+        orb_n_features: number of features for ORB detector (default 700 if None)
     """
     if display:
         print(f"\n========== Processing Frame {idx} Pipeline (detector: {detector_type}) ==========")
@@ -377,8 +378,8 @@ def run_single_pair(idx=0, display=False, plot_3d=True, detector_type='akaze'):
 
     # Select detector based on type
     if detector_type == 'orb':
-        kp1, des1 = get_orb_features(img1)
-        kp2, des2 = get_orb_features(img2)
+        kp1, des1 = get_orb_features(img1, n_features=orb_n_features or 700)
+        kp2, des2 = get_orb_features(img2, n_features=orb_n_features or 700)
         matcher_norm = cv2.NORM_HAMMING
     elif detector_type == 'sift':
         kp1, des1 = get_sift_features(img1)

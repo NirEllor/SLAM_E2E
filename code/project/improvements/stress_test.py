@@ -348,6 +348,16 @@ def run_stress_test_pipeline():
         pickle.dump(results, f)
     print(f"\nResults saved to {output_file}")
 
+    # Generate trajectory comparison plot
+    from experiments.plotting import plot_multi_variant_trajectory
+    plot_output_dir = Path(__file__).parent / 'outputs'
+    plot_output_dir.mkdir(exist_ok=True)
+    plot_multi_variant_trajectory(
+        results,
+        output_path=plot_output_dir / 'stress_test_trajectory.png',
+        title='Stress Test (Loosened Gates) — Baseline vs. SC vs. DCS — Trajectory'
+    )
+
     return results
 
 

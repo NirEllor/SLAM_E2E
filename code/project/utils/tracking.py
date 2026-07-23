@@ -124,7 +124,7 @@ def compute_track_lengths(db, min_length=2):
     return [len(db.frames(t_id)) for t_id in db.track_to_frames if len(db.frames(t_id)) >= min_length]
 
 
-def build_data(num_frames, detector_type='akaze', pnp_threshold=2, pnp_iterations=50, pnp_max_no_improvement=12):
+def build_data(num_frames, detector_type='akaze', pnp_threshold=2, pnp_iterations=50, pnp_max_no_improvement=12, orb_n_features=None):
     """Constructs the long-term TrackingDB object by matching features sequentially across frames.
 
     Args:
@@ -133,6 +133,7 @@ def build_data(num_frames, detector_type='akaze', pnp_threshold=2, pnp_iteration
         pnp_threshold: reprojection error threshold (pixels) for RANSAC inlier cutoff
         pnp_iterations: max RANSAC iterations
         pnp_max_no_improvement: early stopping after N iterations with no improvement
+        orb_n_features: number of features for ORB detector (default 700 if None)
     """
     # TrackingDB is in the shared code/ directory (works for both homework/ and project/)
     import sys
@@ -155,15 +156,16 @@ def build_data(num_frames, detector_type='akaze', pnp_threshold=2, pnp_iteration
     else:  # 'akaze' or 'orb'
         matcher_norm = cv2.NORM_HAMMING
 
-    prev_data = run_single_pair(idx=0, display=False, plot_3d=False, detector_type=detector_type)
+    prev_data = run_single_pair(idx=0, display=False, plot_3d=False, detector_type=detector_type, orb_n_features=orb_n_features)
     bf_matcher = cv2.BFMatcher(matcher_norm)
 
     for idx in range(1, num_frames):
         print(f"Processing Frame Sequence Node: {idx}/{num_frames - 1} (detector: {detector_type})")
-        curr_data = run_single_pair(idx=idx, display=False, plot_3d=False, detector_type=detector_type)
+        curr_data = run_single_pair(idx=idx, display=False, plot_3d=False, detector_type=detector_type, orb_n_features=orb_n_features)
 
         knn_matches = bf_matcher.knnMatch(prev_data["des_left"], curr_data["des_left"], k=2)
-        temporal_matches = [m for m, n in knn_matches if m.distance < 0.7 * n.distance]
+        ratio_threshold = 0.4 if detector_type == 'orb' else 0.7
+        temporal_matches = [m for m, n in knn_matches if m.distance < ratio_threshold * n.distance]
         matches_per_frame.append(len(temporal_matches))
 
         try:

@@ -50,7 +50,11 @@ This package contains scripts and infrastructure for running systematic comparis
 
 ### 5. Feature Detectors (`compare_feature_detectors.py`)
 - **Parameters**: `detector_type` (akaze/orb/sift)
-- **Variants**: AKAZE (baseline), ORB (700 features), SIFT
+- **Variants**: AKAZE (baseline), ORB (3000 features, tuned), SIFT
+  - **ORB-specific tuning** (binary descriptors require different parameters than float descriptors):
+    - `nfeatures=3000` (vs 700 originally) — increased feature budget for fair comparison
+    - `ratio_test=0.4` (vs 0.7 for AKAZE/SIFT) — tighter Lowe's ratio test for binary descriptor matching
+    - `pnp_threshold=4px` (vs 2px for AKAZE/SIFT) — more tolerant RANSAC threshold for weaker correspondences
 - **Loop Closure**: ❌ **DISABLED** (loop closure is independent of feature detection; disabling ensures fair comparison)
 - **Cost**: Expensive (~15-25 min total, 2 full DB rebuilds)
 - **DB**: Baseline for AKAZE, separate DBs for ORB and SIFT

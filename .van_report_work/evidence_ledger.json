@@ -1,7 +1,7 @@
 {
   "metadata": {
     "repo": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex",
-    "generated": "2026-07-20T20:02:06.132164",
+    "generated": "2026-07-23T11:03:36.954546",
     "phase": "report_generation"
   },
   "entries": [
@@ -13,7 +13,7 @@
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/tracking_db.pkl",
         "size_bytes": 409306945
       },
-      "timestamp": "2026-07-20T20:02:38.740540"
+      "timestamp": "2026-07-23T11:04:01.658984"
     },
     {
       "id": "STAGE-1-triangulation",
@@ -25,7 +25,7 @@
         "line_end": 220,
         "function": "triangulate_points_opencv"
       },
-      "timestamp": "2026-07-20T20:02:38.740656"
+      "timestamp": "2026-07-23T11:04:01.659529"
     },
     {
       "id": "STAGE-2-ransac",
@@ -37,7 +37,7 @@
         "line_end": 220,
         "function": "build_data (inline RANSAC)"
       },
-      "timestamp": "2026-07-20T20:02:38.740666"
+      "timestamp": "2026-07-23T11:04:01.659537"
     },
     {
       "id": "STAGE-3-pnp-trajectory",
@@ -49,7 +49,7 @@
         "line_end": 220,
         "function": "build_data"
       },
-      "timestamp": "2026-07-20T20:02:38.740672"
+      "timestamp": "2026-07-23T11:04:01.659554"
     },
     {
       "id": "STAGE-4-database-definition",
@@ -61,7 +61,7 @@
         "line_end": 150,
         "function": "class TrackingDB, class Observation"
       },
-      "timestamp": "2026-07-20T20:02:38.740676"
+      "timestamp": "2026-07-23T11:04:01.659558"
     },
     {
       "id": "STAGE-5-add-frame-database",
@@ -73,7 +73,7 @@
         "line_end": 128,
         "function": "TrackingDB.update_tracks, add_observation"
       },
-      "timestamp": "2026-07-20T20:02:38.740682"
+      "timestamp": "2026-07-23T11:04:01.659568"
     },
     {
       "id": "STAGE-6-single-bundle",
@@ -85,7 +85,7 @@
         "line_end": 220,
         "function": "solve_bundle_window"
       },
-      "timestamp": "2026-07-20T20:02:38.740686"
+      "timestamp": "2026-07-23T11:04:01.659572"
     },
     {
       "id": "STAGE-7-relative-transform",
@@ -97,7 +97,7 @@
         "line_end": 210,
         "function": "compute_relative_pose_and_covariance"
       },
-      "timestamp": "2026-07-20T20:02:38.740690"
+      "timestamp": "2026-07-23T11:04:01.659575"
     },
     {
       "id": "STAGE-8-posegraph",
@@ -109,7 +109,7 @@
         "line_end": 140,
         "function": "build_and_initialize_pose_graph, optimize_pose_graph"
       },
-      "timestamp": "2026-07-20T20:02:38.740694"
+      "timestamp": "2026-07-23T11:04:01.659584"
     },
     {
       "id": "STAGE-9-loop-closure",
@@ -121,7 +121,7 @@
         "line_end": 250,
         "function": "detect_loop_closure_candidates, estimate_verified_loop_relative_poses, add_loop_closures_and_optimize"
       },
-      "timestamp": "2026-07-20T20:02:38.740700"
+      "timestamp": "2026-07-23T11:04:01.659598"
     },
     {
       "id": "EXP-LOOP_CLOSURE_GATING-cmp_lc_gating_trajectory.png",
@@ -129,9 +129,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_lc_gating_trajectory.png",
-        "size_bytes": 108175
+        "size_bytes": 144467
       },
-      "timestamp": "2026-07-20T20:02:38.750724"
+      "timestamp": "2026-07-23T11:04:01.663262"
     },
     {
       "id": "EXP-LOOP_CLOSURE_GATING-cmp_lc_gating_absolute_error.png",
@@ -141,7 +141,7 @@
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_lc_gating_absolute_error.png",
         "size_bytes": 176392
       },
-      "timestamp": "2026-07-20T20:02:38.759548"
+      "timestamp": "2026-07-23T11:04:01.665081"
     },
     {
       "id": "EXP-LOOP_CLOSURE_GATING-cmp_lc_gating_scalars.png",
@@ -149,9 +149,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_lc_gating_scalars.png",
-        "size_bytes": 76290
+        "size_bytes": 73606
       },
-      "timestamp": "2026-07-20T20:02:38.770209"
+      "timestamp": "2026-07-23T11:04:01.667121"
     },
     {
       "id": "EXP-KEYFRAME_DENSITY-cmp_kf_density_trajectory.png",
@@ -159,9 +159,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_kf_density_trajectory.png",
-        "size_bytes": 145202
+        "size_bytes": 181338
       },
-      "timestamp": "2026-07-20T20:02:38.777985"
+      "timestamp": "2026-07-23T11:04:01.669240"
     },
     {
       "id": "EXP-KEYFRAME_DENSITY-cmp_kf_density_absolute_error.png",
@@ -171,7 +171,7 @@
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_kf_density_absolute_error.png",
         "size_bytes": 260140
       },
-      "timestamp": "2026-07-20T20:02:38.784919"
+      "timestamp": "2026-07-23T11:04:01.671518"
     },
     {
       "id": "EXP-KEYFRAME_DENSITY-cmp_kf_density_scalars.png",
@@ -179,9 +179,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_kf_density_scalars.png",
-        "size_bytes": 54768
+        "size_bytes": 58514
       },
-      "timestamp": "2026-07-20T20:02:38.792960"
+      "timestamp": "2026-07-23T11:04:01.673457"
     },
     {
       "id": "EXP-BUNDLE_NOISE_MODEL-cmp_bundle_noise_trajectory.png",
@@ -189,9 +189,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_bundle_noise_trajectory.png",
-        "size_bytes": 121756
+        "size_bytes": 167003
       },
-      "timestamp": "2026-07-20T20:02:38.799715"
+      "timestamp": "2026-07-23T11:04:01.675507"
     },
     {
       "id": "EXP-BUNDLE_NOISE_MODEL-cmp_bundle_noise_absolute_error.png",
@@ -199,9 +199,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_bundle_noise_absolute_error.png",
-        "size_bytes": 199889
+        "size_bytes": 223196
       },
-      "timestamp": "2026-07-20T20:02:38.804013"
+      "timestamp": "2026-07-23T11:04:01.677299"
     },
     {
       "id": "EXP-BUNDLE_NOISE_MODEL-cmp_bundle_noise_scalars.png",
@@ -209,9 +209,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_bundle_noise_scalars.png",
-        "size_bytes": 63781
+        "size_bytes": 65124
       },
-      "timestamp": "2026-07-20T20:02:38.807492"
+      "timestamp": "2026-07-23T11:04:01.678990"
     },
     {
       "id": "EXP-PNP_RANSAC_PARAMS-cmp_pnp_ransac_trajectory.png",
@@ -219,9 +219,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_pnp_ransac_trajectory.png",
-        "size_bytes": 145683
+        "size_bytes": 179419
       },
-      "timestamp": "2026-07-20T20:02:38.810332"
+      "timestamp": "2026-07-23T11:04:01.680564"
     },
     {
       "id": "EXP-PNP_RANSAC_PARAMS-cmp_pnp_ransac_absolute_error.png",
@@ -229,9 +229,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_pnp_ransac_absolute_error.png",
-        "size_bytes": 265879
+        "size_bytes": 258001
       },
-      "timestamp": "2026-07-20T20:02:38.813640"
+      "timestamp": "2026-07-23T11:04:01.681823"
     },
     {
       "id": "EXP-PNP_RANSAC_PARAMS-cmp_pnp_ransac_scalars.png",
@@ -239,9 +239,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_pnp_ransac_scalars.png",
-        "size_bytes": 56168
+        "size_bytes": 54970
       },
-      "timestamp": "2026-07-20T20:02:38.818979"
+      "timestamp": "2026-07-23T11:04:01.683459"
     },
     {
       "id": "EXP-FEATURE_DETECTORS-cmp_feature_detectors_trajectory.png",
@@ -249,9 +249,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_feature_detectors_trajectory.png",
-        "size_bytes": 161523
+        "size_bytes": 192804
       },
-      "timestamp": "2026-07-20T20:02:38.823064"
+      "timestamp": "2026-07-23T11:04:01.684974"
     },
     {
       "id": "EXP-FEATURE_DETECTORS-cmp_feature_detectors_absolute_error.png",
@@ -259,9 +259,9 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_feature_detectors_absolute_error.png",
-        "size_bytes": 194661
+        "size_bytes": 264587
       },
-      "timestamp": "2026-07-20T20:02:38.826326"
+      "timestamp": "2026-07-23T11:04:01.687881"
     },
     {
       "id": "EXP-FEATURE_DETECTORS-cmp_feature_detectors_scalars.png",
@@ -269,9 +269,39 @@
       "status": "VERIFIED",
       "evidence": {
         "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/experiments/outputs/cmp_feature_detectors_scalars.png",
-        "size_bytes": 55844
+        "size_bytes": 57614
       },
-      "timestamp": "2026-07-20T20:02:38.829719"
+      "timestamp": "2026-07-23T11:04:01.689435"
+    },
+    {
+      "id": "IMPROVEMENT-switchable_constraints_trajectory.png",
+      "claim": "Switchable Constraints trajectory",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/improvements/outputs/switchable_constraints_trajectory.png",
+        "size_bytes": 151593
+      },
+      "timestamp": "2026-07-23T11:04:01.691690"
+    },
+    {
+      "id": "IMPROVEMENT-dynamic_covariance_scaling_trajectory.png",
+      "claim": "Dynamic Covariance Scaling trajectory",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/improvements/outputs/dynamic_covariance_scaling_trajectory.png",
+        "size_bytes": 148414
+      },
+      "timestamp": "2026-07-23T11:04:01.694232"
+    },
+    {
+      "id": "IMPROVEMENT-stress_test_trajectory.png",
+      "claim": "Stress Test trajectory",
+      "status": "VERIFIED",
+      "evidence": {
+        "file": "/mnt/c/Users/Nir/PycharmProjects/VAN_ex/code/project/improvements/outputs/stress_test_trajectory.png",
+        "size_bytes": 177524
+      },
+      "timestamp": "2026-07-23T11:04:01.696198"
     },
     {
       "id": "STAT-TOTAL-TRACKS",
@@ -282,7 +312,7 @@
         "method": "db.track_num()",
         "file": "tracking_database.py:68-70"
       },
-      "timestamp": "2026-07-20T20:02:39.279196"
+      "timestamp": "2026-07-23T11:04:02.226443"
     },
     {
       "id": "STAT-TOTAL-FRAMES",
@@ -293,7 +323,7 @@
         "method": "db.frame_num()",
         "file": "tracking_database.py:72-74"
       },
-      "timestamp": "2026-07-20T20:02:39.279218"
+      "timestamp": "2026-07-23T11:04:02.226459"
     },
     {
       "id": "STAT-MEAN-TRACK-LENGTH",
@@ -304,7 +334,7 @@
         "method": "compute_tracking_statistics",
         "file": "utils/tracking.py:75-90"
       },
-      "timestamp": "2026-07-20T20:02:39.279222"
+      "timestamp": "2026-07-23T11:04:02.226464"
     },
     {
       "id": "STAT-MEAN-FRAME-LINKS",
@@ -315,7 +345,7 @@
         "method": "compute_tracking_statistics",
         "file": "utils/tracking.py:75-90"
       },
-      "timestamp": "2026-07-20T20:02:39.279224"
+      "timestamp": "2026-07-23T11:04:02.226477"
     },
     {
       "id": "STAT-MATCHES-PER-FRAME",
@@ -326,7 +356,7 @@
         "file": "utils/visualization.py:787",
         "needs_savefig": true
       },
-      "timestamp": "2026-07-20T20:02:39.279233"
+      "timestamp": "2026-07-23T11:04:02.226509"
     },
     {
       "id": "STAT-INLIER-PERCENTAGE",
@@ -337,7 +367,7 @@
         "file": "utils/visualization.py:256",
         "needs_savefig": true
       },
-      "timestamp": "2026-07-20T20:02:39.279238"
+      "timestamp": "2026-07-23T11:04:02.226514"
     },
     {
       "id": "GRAPH-CONNECTIVITY",
@@ -348,7 +378,7 @@
         "size_bytes": 175617,
         "source_function": "visualization.py:243"
       },
-      "timestamp": "2026-07-20T20:02:39.299913"
+      "timestamp": "2026-07-23T11:04:02.239505"
     },
     {
       "id": "GRAPH-TRACK-LENGTH",
@@ -359,7 +389,7 @@
         "size_bytes": 49813,
         "source_function": "visualization.py:270"
       },
-      "timestamp": "2026-07-20T20:02:39.312438"
+      "timestamp": "2026-07-23T11:04:02.245751"
     },
     {
       "id": "GRAPH-TRAJECTORY",
@@ -370,7 +400,7 @@
         "size_bytes": 316831,
         "source_function": "visualization.py:893"
       },
-      "timestamp": "2026-07-20T20:02:39.326391"
+      "timestamp": "2026-07-23T11:04:02.251638"
     },
     {
       "id": "GRAPH-OPT-ERROR",
@@ -381,7 +411,7 @@
         "size_bytes": 267086,
         "source_function": "visualization.py:835"
       },
-      "timestamp": "2026-07-20T20:02:39.344648"
+      "timestamp": "2026-07-23T11:04:02.255392"
     },
     {
       "id": "GRAPH-PROJ-ERROR",
@@ -392,7 +422,7 @@
         "size_bytes": 274321,
         "source_function": "visualization.py:850"
       },
-      "timestamp": "2026-07-20T20:02:39.359350"
+      "timestamp": "2026-07-23T11:04:02.262475"
     },
     {
       "id": "GRAPH-TRACK-LINK-PNP",
@@ -403,7 +433,7 @@
         "size_bytes": 135446,
         "source_function": "visualization.py:865"
       },
-      "timestamp": "2026-07-20T20:02:39.369863"
+      "timestamp": "2026-07-23T11:04:02.266141"
     },
     {
       "id": "GRAPH-TRACK-LINK-BUNDLE",
@@ -414,7 +444,7 @@
         "size_bytes": 121561,
         "source_function": "visualization.py:865"
       },
-      "timestamp": "2026-07-20T20:02:39.386188"
+      "timestamp": "2026-07-23T11:04:02.269677"
     },
     {
       "id": "GRAPH-ABS-PNP",
@@ -425,7 +455,7 @@
         "size_bytes": 122221,
         "source_function": "visualization.py:804-832"
       },
-      "timestamp": "2026-07-20T20:02:39.422124"
+      "timestamp": "2026-07-23T11:04:02.273416"
     },
     {
       "id": "GRAPH-ABS-PG-NO-LC",
@@ -436,7 +466,7 @@
         "size_bytes": 124651,
         "source_function": "visualization.py:749-784"
       },
-      "timestamp": "2026-07-20T20:02:39.453641"
+      "timestamp": "2026-07-23T11:04:02.276673"
     },
     {
       "id": "GRAPH-ABS-PG-LC",
@@ -447,7 +477,7 @@
         "size_bytes": 133282,
         "source_function": "visualization.py:749-784"
       },
-      "timestamp": "2026-07-20T20:02:39.470492"
+      "timestamp": "2026-07-23T11:04:02.279756"
     },
     {
       "id": "GRAPH-REL-ERROR-KF",
@@ -458,7 +488,7 @@
         "size_bytes": 223786,
         "source_function": "visualization.py:878"
       },
-      "timestamp": "2026-07-20T20:02:39.481910"
+      "timestamp": "2026-07-23T11:04:02.283175"
     },
     {
       "id": "GRAPH-REL-ERROR-PNP-SUBSEG",
@@ -469,7 +499,7 @@
         "size_bytes": 254838,
         "source_function": "visualization.py:915"
       },
-      "timestamp": "2026-07-20T20:02:39.491197"
+      "timestamp": "2026-07-23T11:04:02.285532"
     },
     {
       "id": "GRAPH-REL-ERROR-BUNDLE-SUBSEG",
@@ -480,7 +510,7 @@
         "size_bytes": 165188,
         "source_function": "visualization.py:915"
       },
-      "timestamp": "2026-07-20T20:02:39.499359"
+      "timestamp": "2026-07-23T11:04:02.287666"
     },
     {
       "id": "GRAPH-LC-MATCHES",
@@ -491,7 +521,7 @@
         "size_bytes": 195087,
         "source_function": "visualization.py:945"
       },
-      "timestamp": "2026-07-20T20:02:39.509014"
+      "timestamp": "2026-07-23T11:04:02.289704"
     },
     {
       "id": "GRAPH-INLIER-PERCENTAGE",
@@ -502,7 +532,7 @@
         "size_bytes": 141356,
         "source_function": "visualization.py:256"
       },
-      "timestamp": "2026-07-20T20:02:39.521925"
+      "timestamp": "2026-07-23T11:04:02.291490"
     },
     {
       "id": "GRAPH-UNCERTAINTY-SIZE",
@@ -513,7 +543,7 @@
         "size_bytes": 113169,
         "source_function": "visualization.py:749-1008"
       },
-      "timestamp": "2026-07-20T20:02:39.531921"
+      "timestamp": "2026-07-23T11:04:02.293083"
     }
   ]
 }

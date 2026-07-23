@@ -98,7 +98,7 @@ code/project/
       loose_pnp.pkl
     feature_detectors/
       akaze_baseline.pkl
-      orb_700features.pkl
+      orb_3000features.pkl
       sift_default.pkl
 ```
 
@@ -137,9 +137,14 @@ code/project/
 ### 5. Feature Detectors
 | Variant | Detector | Parameters |
 |---------|----------|-----------|
-| akaze_baseline | AKAZE | threshold=0.0001 |
-| orb_700features | ORB | nfeatures=700 |
-| sift_default | SIFT | defaults |
+| akaze_baseline | AKAZE | threshold=0.0001, ratio_test=0.7, PnP_threshold=2px |
+| orb_3000features | ORB | nfeatures=3000, ratio_test=0.4, PnP_threshold=4px |
+| sift_default | SIFT | defaults, ratio_test=0.7, PnP_threshold=2px |
+
+**ORB-Specific Tuning:** ORB uses binary descriptors (less discriminative than SIFT's float descriptors), so it receives detector-specific tuning for fair comparison:
+- **nfeatures=3000** (vs 700 before) — increased feature budget to match AKAZE/SIFT yield
+- **ratio_test=0.4** (vs 0.7 for others) — looser Lowe's ratio test for binary descriptor matching
+- **PnP_threshold=4px** (vs 2px for others) — more tolerant RANSAC threshold for weaker correspondences
 
 ## Core Files Modified (Backward Compatible)
 
@@ -147,15 +152,48 @@ All changes maintain backward compatibility — existing code works unchanged:
 
 - **`utils/geometry.py`**
   - Added: `get_sift_features(img)`
-  - Modified: `run_single_pair(..., detector_type='akaze')`
+  - Modified: `run_single_pair(..., detector_type='akaze', orb_n_features=None)` — added optional ORB feature budget parameter
 
 - **`utils/tracking.py`**
-  - Modified: `build_data(..., detector_type='akaze', pnp_threshold=2, pnp_iterations=50, pnp_max_no_improvement=12)`
+  - Modified: `build_data(..., orb_n_features=None)` — threads ORB feature budget through to `run_single_pair`
+  - **ORB tuning (line 167):** Detector-specific Lowe's ratio test: `ratio_threshold = 0.4 if detector_type == 'orb' else 0.7` (tighter filtering for ORB's binary descriptors)
   - Modified: `load_or_build_db(..., same_params)`
+
+- **`experiments/compare_feature_detectors.py`**
+  - **ORB tuning (line 50-51):** Detector-specific PnP-RANSAC threshold: `pnp_threshold = 4 if detector_type == 'orb' else 2` (more tolerant for weaker ORB correspondences)
+  - Updated variants: `orb_3000features` with cache_tag `orb_3000` and `orb_n_features=3000`
 
 - **`utils/bundle_adjustment.py`**
   - Modified: `build_and_solve_bundle_core(..., stereo_sigma=1.0, huber_k=2.0)`
   - Modified: `solve_bundle_window(..., stereo_sigma=1.0, huber_k=2.0)`
+
+- **`utils/pose_graph.py`**
+  - Modified: `compute_relative_pose_and_covariance(..., bundle_kwargs=None)` — threads bundle parameters through
+  - Modified: `compute_all_relative_constraints(..., bundle_kwargs=None)` — enables bundle noise model tuning
+
+- **`experiments/harness.py`**
+  - Modified: `build_variant_db(..., orb_n_features=None)` — threads ORB feature budget parameter
+  - Modified: passes `bundle_kwargs` to `compute_all_relative_constraints` (enables bundle noise model experiments)
+
+## ORB Feature Detector Tuning Rationale
+
+ORB uses **binary descriptors** while SIFT/AKAZE use **float descriptors**. Binary descriptors are much faster but less discriminative, leading to weaker feature matching. The following detector-specific tuning was applied to make ORB's comparison fair:
+
+1. **Increased feature budget (700 → 3000):**
+   - ORB was capped at 700 features/frame, while AKAZE/SIFT produce ~2000+ on KITTI
+   - Raising to 3000 gives ORB a fighting chance at finding enough good correspondences
+
+2. **Looser Lowe's ratio test (0.7 → 0.4 for ORB):**
+   - Standard ratio test (0.7) is tuned for float descriptors
+   - Binary descriptors require tighter filtering to remove ambiguous matches
+   - Lower threshold (0.4) rejects only the weakest matches, allowing stronger ones through
+
+3. **More tolerant PnP-RANSAC threshold (2px → 4px for ORB):**
+   - ORB's weaker correspondences lead to higher reprojection errors in raw PnP solutions
+   - Relaxing the threshold from 2px to 4px allows the RANSAC algorithm to accept poses that would otherwise be rejected
+   - This compensates for ORB's lower correspondence quality without making the threshold unreasonably loose
+
+**Note:** These tunings apply only to the ORB variant. AKAZE and SIFT use standard parameters (ratio_test=0.7, PnP_threshold=2px).
 
 ## Next Steps
 

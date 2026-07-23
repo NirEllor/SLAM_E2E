@@ -147,11 +147,13 @@ def run_prior_sensitivity_sweep(db, c0_idx, ck_idx, output_dir):
         print(f" saved → {path}")
 
 
-def compute_relative_pose_and_covariance(db, start_idx, end_idx):
+def compute_relative_pose_and_covariance(db, start_idx, end_idx, bundle_kwargs=None):
     """Calculates covariance of relative pose T_0k = T_0^{-1} T_k using joint marginal covariance and between() Jacobians."""
     from .bundle_adjustment import solve_bundle_window
 
-    br = solve_bundle_window(db, start_idx, end_idx)
+    if bundle_kwargs is None:
+        bundle_kwargs = {}
+    br = solve_bundle_window(db, start_idx, end_idx, **bundle_kwargs)
     graph, result = br["graph"], br["result"]
     marginals = gtsam.Marginals(graph, result)
 
@@ -177,14 +179,16 @@ def compute_relative_pose_and_covariance(db, start_idx, end_idx):
     return relative_pose, Sigma_rel
 
 
-def compute_all_relative_constraints(db, keyframes):
+def compute_all_relative_constraints(db, keyframes, bundle_kwargs=None):
     """Computes sequential keyframe-to-keyframe pose graph edge constraints and covariances."""
+    if bundle_kwargs is None:
+        bundle_kwargs = {}
     bundle_windows = [(keyframes[i], keyframes[i + 1]) for i in range(len(keyframes) - 1)]
     relative_poses, relative_covs = {}, {}
 
     for sf, ef in bundle_windows:
         try:
-            rel_pose, rel_cov = compute_relative_pose_and_covariance(db, sf, ef)
+            rel_pose, rel_cov = compute_relative_pose_and_covariance(db, sf, ef, bundle_kwargs=bundle_kwargs)
             relative_poses[(sf, ef)] = rel_pose
             relative_covs[(sf, ef)] = rel_cov
             print(f" Bundle ({sf:4d} -> {ef:4d}): OK")

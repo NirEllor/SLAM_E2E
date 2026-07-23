@@ -28,17 +28,17 @@ def main():
     print("         Running on full sequence.")
     print("="*80)
 
-    # Define variants: (label, detector_type, cache_tag)
+    # Define variants: (label, detector_type, cache_tag, orb_n_features)
     # AKAZE uses the existing baseline DB (no rebuild)
     variants = [
-        ('akaze_baseline', 'akaze', 'baseline'),
-        ('orb_700features', 'orb', 'orb_700'),
-        ('sift_default', 'sift', 'sift_default'),
+        ('akaze_baseline', 'akaze', 'baseline', None),
+        ('orb_3000features', 'orb', 'orb_3000', 3000),
+        ('sift_default', 'sift', 'sift_default', None),
     ]
 
     results_dict = {}
 
-    for label, detector_type, cache_tag in variants:
+    for label, detector_type, cache_tag, orb_n_features in variants:
         print(f"\n--- Variant: {label} ---")
         print(f"  Detector: {detector_type}")
 
@@ -47,10 +47,13 @@ def main():
         else:
             print(f"  (Building new DB — this may take several minutes)...")
 
+        # ORB gets looser PnP threshold (4px) due to weaker correspondence quality
+        pnp_threshold = 4 if detector_type == 'orb' else 2
+
         # Build or reuse variant DB
-        db = build_variant_db(detector_type=detector_type, pnp_threshold=2,
+        db = build_variant_db(detector_type=detector_type, pnp_threshold=pnp_threshold,
                              pnp_iterations=50, pnp_max_no_improvement=12,
-                             num_frames=None, cache_tag=cache_tag)
+                             num_frames=None, cache_tag=cache_tag, orb_n_features=orb_n_features)
 
         print(f"  Running pipeline...")
 
