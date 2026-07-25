@@ -7,6 +7,7 @@ AKAZE reuses the baseline DB as the baseline variant.
 
 import os
 import sys
+import gc
 from pathlib import Path
 import numpy as np
 
@@ -59,10 +60,21 @@ def main():
 
         # Run pipeline (disable loop closure to avoid bottleneck)
         results = run_pipeline_variant(db, run_loop_closure=True)
+
+        # Capture any per-variant metrics from db before dropping it
+        inlier_pct = np.mean(db.inlier_percentages) if db.inlier_percentages else 0
+        results['pnp_inlier_pct'] = inlier_pct
+
+        # Drop the TrackingDB from results to avoid OOM when accumulating multiple variants
+        del results['db']
         results_dict[label] = results
 
         # Save results
         save_variant_result(results, 'feature_detectors', label)
+
+        # Explicitly free memory before next iteration
+        del db
+        gc.collect()
 
     # Generate comparison plots
     print("\n--- Generating Comparison Plots ---")
@@ -104,7 +116,7 @@ def main():
             mean_ang_err = np.mean(results['absolute_errors_lc'].get('err_angle', []))
             print(f"  Mean location error (PG+LC): {mean_loc_err:.4f} m")
             print(f"  Mean angle error (PG+LC): {mean_ang_err:.4f} deg")
-            inlier_pct = np.mean(results['db'].inlier_percentages) if results['db'].inlier_percentages else 0
+            inlier_pct = results.get('pnp_inlier_pct', 0)
             print(f"  Mean PnP inlier percentage: {inlier_pct:.1f}%")
 
 

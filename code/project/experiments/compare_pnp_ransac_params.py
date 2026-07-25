@@ -6,6 +6,7 @@ Expensive experiment (requires DB rebuild per variant).
 
 import os
 import sys
+import gc
 from pathlib import Path
 import numpy as np
 
@@ -49,10 +50,17 @@ def main():
 
         # Run pipeline (disable loop closure to avoid 4+ hour bottleneck)
         results = run_pipeline_variant(db, run_loop_closure=True)
+
+        # Drop the TrackingDB from results to avoid OOM when accumulating multiple variants
+        del results['db']
         results_dict[label] = results
 
         # Save results
         save_variant_result(results, 'pnp_ransac_params', label)
+
+        # Explicitly free memory before next iteration
+        del db
+        gc.collect()
 
     # Generate comparison plots
     print("\n--- Generating Comparison Plots ---")

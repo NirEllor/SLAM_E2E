@@ -175,16 +175,15 @@ def run_pipeline_variant(db, keyframe_kwargs=None, bundle_kwargs=None, loop_kwar
         lc_params.update(loop_kwargs)
 
         try:
-            candidates = detect_loop_closure_candidates(
+            candidates, _ = detect_loop_closure_candidates(
                 relative_poses, relative_covs, keyframes, lc_params['mahalanobis_threshold']
             )
-            verified = verify_loop_closures_consensus(db, candidates, lc_params['inlier_ratio_threshold'])
-            loop_count = len(verified)
+            verified, loop_count = verify_loop_closures_consensus(db, candidates, lc_params['inlier_ratio_threshold'])
 
             if verified:
                 loop_measurements = estimate_verified_loop_relative_poses(db, verified)
                 pg_results = add_loop_closures_and_optimize(
-                    cleaned_poses, cleaned_covs, loop_measurements, output_dir=None
+                    cleaned_poses, cleaned_covs, loop_measurements, output_dir=output_dir
                 )
                 pg_result_with_lc = pg_results['loop_result']
                 print(f"Loop closures: {loop_count} verified")
