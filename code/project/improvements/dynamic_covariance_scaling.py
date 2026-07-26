@@ -73,6 +73,9 @@ def build_baseline_pose_graph_dcs(cleaned_poses, cleaned_covs, loop_measurements
     return graph, initial
 
 
+DCS_THRESHOLD = 6.0  # chi-squared threshold for DCS robust kernel (≈ dof of Pose3 residual)
+
+
 def build_dcs_pose_graph(cleaned_poses, cleaned_covs, loop_measurements, keyframes):
     """
     Build pose graph with Dynamic Covariance Scaling (DCS) on loop closures.
@@ -109,8 +112,7 @@ def build_dcs_pose_graph(cleaned_poses, cleaned_covs, loop_measurements, keyfram
             initial.insert(end_key, end_pose)
 
     # Add loop closures with DCS robust wrapping
-    dcs_threshold = 1.0  # chi-squared threshold: constraints with chi² > threshold get down-weighted
-    dcs_kernel = gtsam.noiseModel.mEstimator.DCS.Create(dcs_threshold)
+    dcs_kernel = gtsam.noiseModel.mEstimator.DCS.Create(DCS_THRESHOLD)
 
     for loop in loop_measurements:
         start_kf, end_kf = loop['start_kf'], loop['end_kf']
@@ -169,7 +171,7 @@ def run_dynamic_covariance_scaling_pipeline():
     baseline_errors = compute_pose_graph_absolute_error(baseline_result, baseline_ids)
 
     # Build and optimize DCS graph
-    print("\n--- Dynamic Covariance Scaling (chi² threshold = 1.0) ---")
+    print("\n--- Dynamic Covariance Scaling (chi² threshold = 6.0) ---")
     t0 = time.time()
     dcs_graph, dcs_initial = build_dcs_pose_graph(
         cleaned_poses, cleaned_covs, loop_measurements, keyframes
@@ -199,13 +201,13 @@ def run_dynamic_covariance_scaling_pipeline():
             'absolute_errors': dcs_errors,
             'runtime_sec': dcs_time,
             'loop_count': len(loop_measurements),
-            'dcs_threshold': 1.0,
+            'dcs_threshold': DCS_THRESHOLD,
         }
     }
 
     # Print summary
     print("\n" + "-"*80)
-    print("SUMMARY")
+    print(f"SUMMARY (DCS threshold = {DCS_THRESHOLD})")
     print("-"*80)
     for variant, data in results.items():
         errs = data['absolute_errors']

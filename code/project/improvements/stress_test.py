@@ -180,7 +180,7 @@ def build_dcs_graph_stress(cleaned_poses, cleaned_covs, loop_measurements, keyfr
             initial.insert(end_key, end_pose)
 
     # Add loop closures with DCS
-    dcs_threshold = 1.0
+    dcs_threshold = 6.0
     dcs_kernel = gtsam.noiseModel.mEstimator.DCS.Create(dcs_threshold)
 
     for loop in loop_measurements:
@@ -321,7 +321,7 @@ def run_stress_test_pipeline():
             'absolute_errors': dcs_errors,
             'runtime_sec': dcs_time,
             'loop_count': len(loop_measurements),
-            'dcs_threshold': 1.0,
+            'dcs_threshold': 6.0,
             'gate_setting': 'LOOSE (maha=5000, inlier_ratio=0.3)',
         }
     }

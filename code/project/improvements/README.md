@@ -37,7 +37,7 @@ e_ij_switched = s_ij * e_ij_original(pose_i, pose_j)
 PriorFactor(s_ij, 1.0, sigma=0.3)
 ```
 
-**Optimization**: jointly optimizes poses **and** switch variables. Switches near 1.0 indicate trusted loop closures; switches near 0.0 indicate suppressed outliers. Critically, this happens *during* optimization, not before it — the back-end can learn to down-weight bad loops on its own.
+**Optimization**: jointly optimizes poses **and** switch variables. Switches near 1.0 indicate trusted loop closures; switches near 0.0 indicate suppressed outliers. Critically, this happens *during* optimization, not before it — the back-end can learn to down-weight bad loops on its own. The noise model for the switched `CustomFactor` is set to unit variance (not the loop-closure covariance); using actual covariances causes residuals to balloon in whitened space, driving switches to zero for all loops.
 
 **Reference**: Sünderhauf, N., & Protzel, P. (2012). Switchable Constraints for Robust Pose Graph SLAM. In *Proceedings of IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)*.
 
@@ -45,16 +45,16 @@ PriorFactor(s_ij, 1.0, sigma=0.3)
 
 **Scale factor** per loop-closure constraint, recomputed each iteration:
 ```
-w_ij = scale(χ²_ij) = min(1.0, Φ / χ²_ij)
+s_ij = min(1, 2Φ / (Φ + χ²_ij))
 ```
-where `χ²_ij` is the squared Mahalanobis distance of the constraint's current residual, and `Φ ≈ 1.0` is the threshold.
+where `χ²_ij` is the squared Mahalanobis distance of the constraint's current residual, and `Φ = 6` is the threshold (degrees of freedom for a Pose3 residual; a correctly-modeled 6-DOF Gaussian has E[χ²] ≈ 6 under the null hypothesis).
 
 **Information matrix reweighting**:
 ```
 Λ_ij^{new} = w_ij * Λ_ij^{original}
 ```
 
-The more a constraint violates its covariance model (high `χ²`), the more it gets down-weighted. This is implemented in GTSAM as a native robust kernel (`mEstimator.DCS`) — no separate switch optimization needed. The weighting is *closed-form and continuous*, providing smooth downgrading of outliers.
+The more a constraint violates its covariance model (high `χ²`), the more it gets down-weighted. This is implemented in GTSAM as a native robust kernel (`mEstimator.DCS`) — no separate switch optimization needed. The weighting is *closed-form and continuous*, providing smooth downgrading of outliers. (Note: the formula `s = 2Φ/(Φ+χ²)` has been empirically verified to match GTSAM's compiled `mEstimator.DCS.weight()` function.)
 
 **Reference**: Agarwal, P., Tipaldi, G. D., Spinello, L., Stachniss, C., & Burgard, W. (2013). Robust Map Optimization Using Dynamic Covariance Scaling. In *Proceedings of IEEE International Conference on Robotics and Automation (ICRA)*, pp. 62–69.
 

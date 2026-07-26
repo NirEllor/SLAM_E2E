@@ -174,7 +174,8 @@ def build_switchable_constraints_graph(cleaned_poses, cleaned_covs, loop_measure
         rel_cov = loop['relative_covariance']
         measurement = (rel_pose, rel_cov)
 
-        # Use identity noise model; the switch function modulates the actual constraint
+        # Use identity noise model; switch function modulates constraint influence.
+        # (Using actual loop covariance causes residuals to balloon in whitened space, collapsing switches to ~0)
         measurement_noise = gtsam.noiseModel.Isotropic.Sigma(6, 1.0)
         switched_factor = gtsam.CustomFactor(
             measurement_noise,
