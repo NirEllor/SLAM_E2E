@@ -1064,15 +1064,15 @@ def main():
 
     # --- Exercise 1: Feature Extraction & Matching ---
     print("\n[Stage 1/7] Running Feature Detection and Matching...")
-    # run_feature_detection_and_matching_pipeline(frame_index=0)
+    run_feature_detection_and_matching_pipeline(frame_index=0)
 
     # --- Exercise 2: Stereo Rectification & Triangulation ---
     print("\n[Stage 2/7] Running Stereo Rectification and Triangulation...")
-    # run_stereo_rectification_pipeline(frame_index=0)
+    run_stereo_rectification_pipeline(frame_index=0)
 
     # --- Exercise 3: Temporal Tracking & PnP Estimation ---
     print("\n[Stage 3/7] Running Temporal Tracking and PnP Motion Estimation...")
-    # run_temporal_tracking_and_pnp_pipeline(idx=0)
+    run_temporal_tracking_and_pnp_pipeline(idx=0)
 
     # --- Exercise 4: Tracking Database & Statistics ---
     print("\n[Stage 4/7] Running Tracking Database and Analysis...")
